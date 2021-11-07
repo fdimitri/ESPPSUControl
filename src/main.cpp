@@ -14,7 +14,7 @@
 
 typedef void (*writeMessage)(byte *buffer);
 typedef void (*readMessage)(byte *buffer);
-
+typedef void (*parseCallback)(int argc, char *argv[]);
 struct PMBusCommand {
   const char *name;
   uint8_t reg;
@@ -24,6 +24,12 @@ struct PMBusCommand {
   readMessage read;
 };
 
+struct SerialCommand {
+  const char *command;
+  const char *mnemonic;
+  parseCallback callback;
+};
+
 void scan_i2c_bus();
 
 void stub(byte *buffer) {
@@ -31,7 +37,7 @@ void stub(byte *buffer) {
 }
 
 PMBusCommand pmbus_commands[] = {
-  { "OPERATION", 0x01, PMBUS_RW, 1, stub, stub },
+  { "OPERATION", 0x01, PMBUS_WRITE, 1, stub, stub },
   { "ON_OFF_CONFIG", 0x02, PMBUS_RW, 1, stub, stub },
   { "CLEAR_FAULTS", 0x03, PMBUS_NONE, 0, stub, stub },
   { "WRITE_PROTECT", 0x10, PMBUS_RW, 1, stub, stub },
@@ -78,13 +84,25 @@ PMBusCommand pmbus_commands[] = {
   { NULL, 0, 0, 0 }
 };
 
+SerialCommand serial_commands[] = {
+  { "read", "r", NULL },
+  { "write", "w", NULL },
+  { "power_off", "poff", NULL },
+  { "power_on", "pon", NULL },
+  { NULL, NULL, NULL }
+};
+
 #define CONFIG_IIC_SPEED 100000
+char serial_command_buffer[256];
+uint8_t serial_command_buffer_ptr = 0;
 
 int pmbus_read(uint8_t i2c_address, uint8_t command, uint8_t len, byte *buffer);
 int pmbus_write(uint8_t i2c_address, uint8_t command, uint8_t len, byte *buffer);
 int pmbus_request_by_name(const char *cmd, byte *buffer);
 int pmbus_send_by_name(const char *cmd, uint32_t buffer);
 int pmbus_send_by_obj(const char *cmd, uint32_t buffer);
+void parse_message(char *msg);
+void serial_read();
 
 unsigned char crc8(unsigned char *d, int n);
 
@@ -134,11 +152,79 @@ void loop() {
         pmbus_read_all();
         break;
       case 'f':
-        pmbus_send_by_name("FAN_COMMAND_1", 0x0);
+        pmbus_send_by_name("FAN_COMMAND_1", 0x08);
         break;
       case 'F':
         pmbus_send_by_name("FAN_COMMAND_1", 0xFFFFFFFF);
         break;
+      case 's':
+      case 'S':
+        scan_i2c_bus();
+        break;
+      case 'p':
+        pmbus_send_by_name("OPERATION", 0x0);
+        break;
+      case 'P':
+        pmbus_send_by_name("OPERATION", 0x80);
+        break;
+    }
+  }
+}
+
+void parse_message(char *omsg) {
+  char *argv[32];
+  unsigned int argc = 0;
+  char *msg, *msgstart;
+
+  msgstart = msg = (char *) malloc(strlen(omsg) + 1);
+  memcpy(msg, omsg, strlen(omsg));
+  msg[strlen(omsg)] = '\0';
+
+  argv[0] = strtok(msg, " ");
+  msg = strtok(NULL, " ");
+
+  while (msg != NULL && argc < 32) {
+    argv[++argc] = msg;
+    msg = strtok(NULL, " ");
+  }
+  
+  for (unsigned int i = 0; serial_commands[i].command != NULL; i++) {
+    if (!strcmp(serial_commands[i].command, argv[0])) {
+      serial_commands[i].callback(argc + 1, argv);
+      free(msgstart);
+      return;
+    }
+  }
+  Serial.printf("Command %s not found.\n", argv[0]);
+
+  free(msgstart);
+  return;
+}
+
+
+void serial_read() {
+  while (Serial.available() > 0) {
+    uint8_t c = Serial.read();
+    Serial.print((char) c);
+    if (serial_command_buffer_ptr > sizeof(serial_command_buffer) - 1) {
+      Serial.printf("Serial input exceeded length! Discarding input.\n");
+      serial_command_buffer_ptr = 0;
+    }
+    switch (c) {
+      case '\r':
+      case '\n':
+        if (strlen(serial_command_buffer)) {
+          parse_message((char *) &serial_command_buffer);
+          serial_command_buffer_ptr = 0;
+        }
+        memset((void *) &serial_command_buffer, 0, sizeof(serial_command_buffer));
+        break;
+      case '\b':
+        serial_command_buffer_ptr--;
+        serial_command_buffer[serial_command_buffer_ptr] = 0;
+        break;
+      default:
+        serial_command_buffer[serial_command_buffer_ptr++] = c;  
     }
   }
 }
@@ -162,7 +248,7 @@ void pmbus_read_all() {
         Serial.printf("(0x%02x)%24s: 0x%04x (ERROR)\n", p->reg, p->name, buffer);
       }
       else {
-        Serial.printf("(0x%02x)%24s: 0x%04x\n", p->reg, p->name, buffer);
+        Serial.printf("(0x%02x)%24s: 0x%04x (%f)\n", p->reg, p->name, buffer, buffer / 512.0);
       }
     }
     delay(100);
