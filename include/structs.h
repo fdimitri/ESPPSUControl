@@ -1,4 +1,16 @@
+#ifndef PROJECT_STRUCTS_H
+#define PROJECT_STRUCTS_H
+#ifdef ARDUINO
 #include <Arduino.h>
+#include <Wire.h>
+#else
+#include <stdint.h>
+#include <string.h>
+#include <math.h>
+#include <stdlib.h>
+typedef unsigned char byte;
+#endif
+
 #define PMBUS_READ  0x01
 #define PMBUS_WRITE 0x02
 #define PMBUS_NONE  0x04
@@ -42,3 +54,4 @@ struct linear16_t {
   int16_t mantissa : 5;
   int16_t ignored : 11;
 };
+#endif

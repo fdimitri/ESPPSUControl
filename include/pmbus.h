@@ -2,7 +2,7 @@ extern int pmbus_read(uint8_t i2c_address, uint8_t command, uint8_t len, byte *b
 extern int pmbus_write(uint8_t i2c_address, uint8_t command, uint8_t len, byte *buffer);
 extern int pmbus_request_by_name(const char *cmd, byte *buffer);
 extern int pmbus_send_by_name(const char *cmd, uint32_t buffer);
-extern int pmbus_send_by_obj(const char *cmd, uint32_t buffer);
+extern int pmbus_send_by_obj(PMBusCommand *p, uint32_t buffer);
 extern PMBusCommand *pmbus_cmd_get_by_name(const char *cmd);
 extern PMBusCommand *pmbus_cmd_get_by_register(uint8_t reg);
 extern unsigned char pmbus_crc8(unsigned char *d, int n);
