@@ -89,7 +89,7 @@ PMBusCommand *pmbus_cmd_get_by_register(uint8_t reg) {
 
 PMBusCommand *pmbus_cmd_get_by_name(const char *cmd) {
   for (unsigned int i = 0; pmbus_commands[i].name != NULL; i++) {
-    if (!strcmp(cmd, pmbus_commands[i].name)) {
+    if (!strcasecmp(cmd, pmbus_commands[i].name)) {
       return(&pmbus_commands[i]);
     }
   }

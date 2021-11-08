@@ -149,7 +149,7 @@ void parse_message(char *omsg) {
   }
   
   for (unsigned int i = 0; serial_commands[i].command != NULL; i++) {
-    if (!strcmp(serial_commands[i].command, argv[0])) {
+    if (!strcasecmp(serial_commands[i].command, argv[0])) {
       if (serial_commands[i].callback) serial_commands[i].callback(argc + 1, argv);
       else Serial.printf("Command %s at index %d has no callback..?\n", argv[0], i);
       free(msgstart);
