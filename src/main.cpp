@@ -18,15 +18,6 @@
 #endif
 void scan_i2c_bus();
 
-SerialCommand serial_commands[] = {
-  { "read", "r", NULL },
-  { "write", "w", NULL },
-  { "power_off", "poff", NULL },
-  { "power_on", "pon", NULL },
-  { "set_fan", "sf", NULL },
-  { "clear_faults", "clr", NULL },
-  { NULL, NULL, NULL }
-};
 
 #define CONFIG_IIC_SPEED 100000
 char serial_command_buffer[256];
@@ -44,6 +35,17 @@ char *hexstring_strip(const char *h, char *n);
 long hexstring_to_long(const char *h);
 
 void pmbus_read_all();
+
+SerialCommand serial_commands[] = {
+  { "read", "r", parse_read },
+  { "write", "w", parse_write },
+  { "power_off", "poff", NULL },
+  { "power_on", "pon", NULL },
+  { "set_fan", "sf", NULL },
+  { "clear_faults", "clr", NULL },
+  { NULL, NULL, NULL }
+};
+
 
 void setup() {
   delay(2500);
@@ -148,7 +150,8 @@ void parse_message(char *omsg) {
   
   for (unsigned int i = 0; serial_commands[i].command != NULL; i++) {
     if (!strcmp(serial_commands[i].command, argv[0])) {
-      serial_commands[i].callback(argc + 1, argv);
+      if (serial_commands[i].callback) serial_commands[i].callback(argc + 1, argv);
+      else Serial.printf("Command %s at index %d has no callback..?\n", argv[0], i);
       free(msgstart);
       return;
     }
@@ -160,12 +163,87 @@ void parse_message(char *omsg) {
 }
 
 void parse_write(int argc, char *argv[]) {
+  uint8_t cmdregister = 0;
+  uint32_t buffer = 0;
+  PMBusCommand *p;
+  if (argc < 3) {
+    Serial.printf("Expected more arguments from you!\n");
+    return;
+  }
 
+  if (argc > 6) {
+    Serial.printf("Too many arguments! I'm leaving.\n");
+    return;
+  }
+  
+  // Reverse Byte Order?
+  for (unsigned int i = 0; i < argc - 2; i++) {
+    buffer |= strtol(argv[i+2], NULL, 16) << ((argc - 3 - i) * 8);
+  }
+
+  // Forward byte order
+  // for (unsigned int i = 0; i < argc - 2; i++) {
+  //   buffer |= strtol(argv[i+2], NULL, 16) << ((i-2) * 8);
+  // }
+  
+  if (!strncmp("0x", argv[1], 2)) {
+    cmdregister = strtol(argv[1], NULL, 16);
+    p = pmbus_cmd_get_by_register(cmdregister);
+  }
+
+  else {
+    p = pmbus_cmd_get_by_name(argv[1]);
+  }
+
+  if (!p) {
+    Serial.printf("Couldn't find PMBus command by %s\n", argv[1]);
+    if (!cmdregister) return;
+    else {
+      pmbus_write(I2C_PSU_ADDRESS, cmdregister, argc - 2, (byte *) buffer);
+      return;
+    }
+  }
+
+  Serial.printf("Found PMBus command information for %s at 0x%2x takes %d bytes\n", p->name, p->reg, p->length);
+
+  pmbus_send_by_obj(p, buffer);
+  
+  Serial.printf("Writing to %02x: %04x\n", cmdregister, buffer);
 }
 
+
 void parse_read(int argc, char *argv[]) {
+  uint8_t cmdregister = 0;
+  PMBusCommand *p = NULL;
+  uint64_t buffer = 0;
+  if (argc < 2) {
+    Serial.printf("Expected more arguments from you!\n");
+    return;
+  }
 
+  if (argc > 2) {
+    Serial.printf("Too many arguments! I'm leaving.\n");
+    return;
+  }
 
+  if (!strncmp("0x", argv[1], 2)) {
+    cmdregister = strtol(argv[1], NULL, 16);
+    p = pmbus_cmd_get_by_register(cmdregister);
+  }
+
+  else {
+    p = pmbus_cmd_get_by_name(argv[1]);
+  }
+
+  if (!p) {
+    Serial.printf("Couldn't find PMBus command by %s\n", argv[1]);
+    return;
+  }
+
+  Serial.printf("Found PMBus command information for %s at 0x%2x takes %d bytes\n", p->name, p->reg, p->length);
+  pmbus_request_by_name(p->name, (byte *) &buffer);
+  Serial.printf("Device responded with: %lx\n", buffer);
+  
 }
 
 void parse_set_fan(int argc, char *argv[]) {
