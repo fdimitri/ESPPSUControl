@@ -1,3 +1,5 @@
+#ifndef PROJECT_STRUCTS_H
+#define PROJECT_STRUCTS_H
 #include <Arduino.h>
 #define PMBUS_READ  0x01
 #define PMBUS_WRITE 0x02
@@ -42,3 +44,4 @@ struct linear16_t {
   int16_t mantissa : 5;
   int16_t ignored : 11;
 };
+#endif
