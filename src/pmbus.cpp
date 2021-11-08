@@ -1,7 +1,13 @@
 #ifdef ARDUINO
 #include <Arduino.h>
 #include <Wire.h>
+#else
+#include <stdint.h>
+#include <string.h>
+#include <math.h>
+#include <stdlib.h>
 #endif
+
 
 #include "structs.h"
 #include "main.h"
@@ -9,6 +15,9 @@
 #include "pmbus_functions.h"
 #include "pmbus_commands.h"
 
+#ifndef ARDUINO
+#include "linux_arduino_wrapper.h"
+#endif
 
 void stub(byte *buffer) {
 

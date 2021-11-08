@@ -1,6 +1,11 @@
 #ifdef ARDUINO
 #include <Arduino.h>
 #include <Wire.h>
+#else
+#include <stdint.h>
+#include <string.h>
+#include <math.h>
+#include <stdlib.h>
 #endif
 
 #include <stdio.h>
@@ -8,6 +13,9 @@
 #include "structs.h"
 #include "pmbus.h"
 
+#ifndef ARDUINO
+#include "linux_arduino_wrapper.h"
+#endif
 void scan_i2c_bus();
 
 SerialCommand serial_commands[] = {
@@ -71,7 +79,7 @@ void loop() {
   //scan_i2c_bus();
   char sbuf;
   PMBusCommand *p;
-  if (Serial.available() > 0 && Serial.read(&sbuf, 1)) {
+  if (0 && Serial.available() > 0 && Serial.read(&sbuf, 1)) {
     switch (sbuf) {
       case 'r':
         pmbus_read_all();
@@ -166,7 +174,7 @@ void parse_set_fan(int argc, char *argv[]) {
 void serial_read() {
   while (Serial.available() > 0) {
     uint8_t c = Serial.read();
-    Serial.print((char) c);
+    Serial.printf("%c", (char) c);
     if (serial_command_buffer_ptr > sizeof(serial_command_buffer) - 1) {
       Serial.printf("Serial input exceeded length! Discarding input.\n");
       serial_command_buffer_ptr = 0;
@@ -232,6 +240,7 @@ char *hexstring_strip(const char *h, char *n) {
 
 
 
+
 void scan_i2c_bus() {
   byte error, address; 
   int nDevices;
@@ -246,13 +255,13 @@ void scan_i2c_bus() {
 
     if (!error) {
       Serial.print("I2C device found at address 0x");
-      Serial.print(address, HEX);
+      Serial.printf("%x\n", address);
       Serial.println("  !");
       nDevices++;
     }
     else if (error == 4) {
       Serial.print("Unknown error at address 0x");
-      Serial.println(address, HEX);
+      Serial.printf("%x\n", address);
     }
   }
   if (nDevices == 0) {
