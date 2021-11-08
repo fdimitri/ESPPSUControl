@@ -1,0 +1,1 @@
+extern char *string_to_hex(char *string, int maxn);
