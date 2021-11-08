@@ -6,6 +6,10 @@
 #define PMBUS_NONE  0x04
 #define PMBUS_RW    (PMBUS_READ | PMBUS_WRITE)
 
+#define PMBUS_DATATYPE_DIRECT   0x08
+#define PMBUS_DATATYPE_LINEAR11 0x10
+#define PMBUS_DATATYPE_LINEAR16 0x20
+
 #define PMBUS_IS_READONLY(x) (x == PMBUS_READ)
 #define PMBUS_IS_READWRITE(x) (x & PMBUS_READ && x & PMBUS_WRITE)
 #define PMBUS_IS_WRITEONLY(x) (x == PMBUS_WRITE)
@@ -42,11 +46,13 @@ PMBusCommand pmbus_commands[] = {
   { "CLEAR_FAULTS", 0x03, PMBUS_NONE, 0, stub, stub },
   { "WRITE_PROTECT", 0x10, PMBUS_RW, 1, stub, stub },
   { "CAPABILITY", 0x19, PMBUS_READ, 1, stub, stub },
+
   { "VOUT_MODE", 0x20, PMBUS_READ, 1, stub, stub },
   { "VOUT_COMMAND", 0x21, PMBUS_RW, 2, stub, stub },
   { "VOUT_TRIM", 0x22, PMBUS_RW, 2, stub, stub },
   { "VOUT_CAL_OFFSET", 0x23, PMBUS_RW, 2, stub, stub },
   { "VOUT_MAX", 0x24, PMBUS_READ, 2, stub, stub },
+  { "COEFFICIENTS", 0x30, PMBUS_READ, 6, stub, stub },
   { "POUT_MAX", 0x31, PMBUS_READ, 2, stub, stub },
   
   { "VIN_ON", 0x35, PMBUS_READ, 2, stub, stub },
@@ -55,6 +61,22 @@ PMBusCommand pmbus_commands[] = {
   { "FAN_CONFIG", 0x3a, PMBUS_READ, 1, stub, stub },
   { "FAN_COMMAND_1", 0x3b, PMBUS_RW, 2, stub, stub },
 
+  { "VOUT_OV_FAULT_LIMIT", 0x40, PMBUS_RW, 2, stub, stub },
+  { "VOUT_OV_FAULT_RESPONSE", 0x41, PMBUS_READ, 1, stub, stub },
+  { "VOUT_OV_WARN_LIMIT", 0x42, PMBUS_RW, 2, stub, stub },
+
+  { "VOUT_UV_WARN_LIMIT", 0x43, PMBUS_RW, 2, stub, stub },
+  { "VOUT_UV_FAULT_LIMIT", 0x44, PMBUS_RW, 2, stub, stub },
+  { "VOUT_UV_FAULT_RESPONSE", 0x45, PMBUS_READ, 1, stub, stub },
+
+  { "IOUT_OC_FAULT_LIMIT", 0x46, PMBUS_READ, 2, stub, stub },
+  { "IOUT_OC_FAULT_RESPONSE", 0x47, PMBUS_READ, 1, stub, stub },
+  { "IOUT_OC_WARN_LIMIT", 0x4A, PMBUS_READ, 2, stub, stub },
+  
+  { "OT_FAULT_LIMIT", 0x4F, PMBUS_RW, 2, stub, stub },
+  { "OT_FAULT_RESPONSE", 0x50, PMBUS_RW, 1, stub, stub },
+  { "OT_WARN_LIMIT", 0x51, PMBUS_RW, 2, stub, stub },
+
   { "STATUS_BYTE", 0x78, PMBUS_READ, 1, stub, stub },
   { "STATUS_WORD", 0x79, PMBUS_READ, 2, stub, stub },
   { "STATUS_VOUT", 0x7A, PMBUS_READ, 1, stub, stub },
@@ -62,20 +84,22 @@ PMBusCommand pmbus_commands[] = {
   { "STATUS_INPUT", 0x7C, PMBUS_READ, 1, stub, stub },
   { "STATUS_TEMPERATURE", 0x7D, PMBUS_READ, 1, stub, stub },
   { "STATUS_CML", 0x7E, PMBUS_READ, 1, stub, stub },
+
   { "STATUS_MFR_SPECIFIC", 0x80, PMBUS_READ, 1, stub, stub },
   { "STATUS_FANS_1_2", 0x81, PMBUS_READ, 1, stub, stub },
 
 
-  { "READ_EIN", 0x86, PMBUS_READ, 6, stub, stub},
-  { "READ_EOUT", 0x87, PMBUS_READ, 6, stub, stub},
+  { "READ_EIN", 0x86, PMBUS_READ | PMBUS_DATATYPE_DIRECT, 6, stub, stub},
+  { "READ_EOUT", 0x87, PMBUS_READ | PMBUS_DATATYPE_DIRECT, 6, stub, stub},
   { "READ_VIN", 0x88, PMBUS_READ, 2, stub, stub},
   { "READ_IIN", 0x89, PMBUS_READ, 2, stub, stub},
   { "READ_VCAP", 0x8A, PMBUS_READ, 2, stub, stub},
-  { "READ_VOUT", 0x8B, PMBUS_READ, 2, stub, stub},
+  { "READ_VOUT", 0x8B, PMBUS_READ | PMBUS_DATATYPE_DIRECT, 2, stub, stub},
   { "READ_IOUT", 0x8C, PMBUS_READ, 2, stub, stub},
   { "READ_TEMPERATURE_1", 0x8D, PMBUS_READ, 2, stub, stub},
   { "READ_TEMPERATURE_2", 0x8E, PMBUS_READ, 2, stub, stub},
   { "READ_TEMPERATURE_3", 0x8F, PMBUS_READ, 2, stub, stub},
+
   { "READ_FAN_SPEED_1", 0x90, PMBUS_READ, 2, stub, stub},
   { "READ_POUT", 0x91, PMBUS_READ, 2, stub, stub},
   { "READ_PIN", 0x92, PMBUS_READ, 2, stub, stub},
@@ -89,6 +113,8 @@ SerialCommand serial_commands[] = {
   { "write", "w", NULL },
   { "power_off", "poff", NULL },
   { "power_on", "pon", NULL },
+  { "set_fan", "sf", NULL },
+  { "clear_faults", "clr", NULL },
   { NULL, NULL, NULL }
 };
 
@@ -152,7 +178,7 @@ void loop() {
         pmbus_read_all();
         break;
       case 'f':
-        pmbus_send_by_name("FAN_COMMAND_1", 0x08);
+        pmbus_send_by_name("FAN_COMMAND_1", 0xa0);
         break;
       case 'F':
         pmbus_send_by_name("FAN_COMMAND_1", 0xFFFFFFFF);
@@ -168,6 +194,9 @@ void loop() {
         pmbus_send_by_name("OPERATION", 0x80);
         break;
     }
+  }
+  else {
+    serial_read();
   }
 }
 
@@ -200,7 +229,28 @@ void parse_message(char *omsg) {
   free(msgstart);
   return;
 }
+struct linear11_t {
+  int16_t base : 11;
+  int16_t mantissa : 5;
+};
 
+struct linear16_t {
+  int16_t mantissa : 5;
+  int16_t ignored : 11;
+};
+
+float pmbus_convert_linear11_to_float(uint16_t value) {
+  // I could bang bits around like crazy and play the 2s complement XOR game, but if the compiler wants to do it for me..
+  linear11_t *v = (linear11_t *) &value;
+  return((float) v->base * powf(2, v->mantissa));
+}
+
+float pmbus_convert_linear16_to_float(int16_t value, int16_t vout_mode) {
+  // I could bang bits around like crazy and play the 2s complement XOR game, but if the compiler wants to do it for me..
+  // Maybe I should write a bunch of bitwise operators just for the fun of it?
+  linear16_t *v = (linear16_t *) &vout_mode;
+  return((float) value * powf(2, v->mantissa));
+}
 
 void serial_read() {
   while (Serial.available() > 0) {
@@ -248,7 +298,7 @@ void pmbus_read_all() {
         Serial.printf("(0x%02x)%24s: 0x%04x (ERROR)\n", p->reg, p->name, buffer);
       }
       else {
-        Serial.printf("(0x%02x)%24s: 0x%04x (%f)\n", p->reg, p->name, buffer, buffer / 512.0);
+        Serial.printf("(0x%02x)%24s: 0x%04x (L11:%f) (L16:%f)\n", p->reg, p->name, buffer, pmbus_convert_linear11_to_float(buffer), pmbus_convert_linear16_to_float(buffer,0x17));
       }
     }
     delay(100);
