@@ -1,6 +1,9 @@
 #ifndef PROJECT_STRUCTS_H
 #define PROJECT_STRUCTS_H
+#ifdef ARDUINO
 #include <Arduino.h>
+#include <Wire.h>
+#endif
 #define PMBUS_READ  0x01
 #define PMBUS_WRITE 0x02
 #define PMBUS_NONE  0x04

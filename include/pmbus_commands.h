@@ -51,6 +51,7 @@ PMBusCommand pmbus_commands[] = {
   { "READ_EOUT", 0x87, PMBUS_READ | PMBUS_DATATYPE_DIRECT, 6, stub, stub},
   { "READ_VIN", 0x88, PMBUS_READ, 2, stub, stub},
   { "READ_IIN", 0x89, PMBUS_READ, 2, stub, stub},
+  
   { "READ_VCAP", 0x8A, PMBUS_READ, 2, stub, stub},
   { "READ_VOUT", 0x8B, PMBUS_READ | PMBUS_DATATYPE_DIRECT, 2, stub, stub},
   { "READ_IOUT", 0x8C, PMBUS_READ, 2, stub, stub},

@@ -1,5 +1,7 @@
+#ifdef ARDUINO
 #include <Arduino.h>
 #include <Wire.h>
+#endif
 
 #include "structs.h"
 #include "main.h"
@@ -86,7 +88,7 @@ PMBusCommand *pmbus_cmd_get_by_name(const char *cmd) {
 }
 
 int pmbus_read(uint8_t i2c_address, uint8_t command, uint8_t len, byte *buffer) {
-  Wire.beginTransmission(i2c_address);
+    Wire.beginTransmission(i2c_address);
 	Wire.write(command);
   //Wire.write(crc8(&command, 1));
 	Wire.endTransmission(false);

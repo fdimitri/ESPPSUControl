@@ -1,5 +1,9 @@
+#ifdef ARDUINO
 #include <Arduino.h>
 #include <Wire.h>
+#endif
+
+#include <stdio.h>
 
 #include "structs.h"
 #include "pmbus.h"
@@ -21,12 +25,15 @@ char serial_command_buffer[256];
 uint8_t serial_command_buffer_ptr = 0;
 
 
+void parse_write(int argc, char *argv[]);
+void parse_read(int argc, char *argv[]);
+void parse_set_fan(int argc, char *argv[]);
 void parse_message(char *msg);
 void serial_read();
 
-unsigned char crc8(unsigned char *d, int n);
-
 char *string_to_hex(char *string, int maxn);
+char *hexstring_strip(const char *h, char *n);
+long hexstring_to_long(const char *h);
 
 void pmbus_read_all();
 
@@ -70,10 +77,13 @@ void loop() {
         pmbus_read_all();
         break;
       case 'f':
-        pmbus_send_by_name("FAN_COMMAND_1", 0xa0);
+        pmbus_send_by_name("FAN_COMMAND_1", 0x0a);
+        pmbus_send_by_name("FAN_SPEED_TEST", 0x0a);
         break;
       case 'F':
         pmbus_send_by_name("FAN_COMMAND_1", 0xFFFFFFFF);
+        pmbus_send_by_name("FAN_SPEED_TEST", 0xFFFFFFFF);
+
         break;
       case 's':
       case 'S':
@@ -84,6 +94,25 @@ void loop() {
         break;
       case 'P':
         pmbus_send_by_name("OPERATION", 0x80);
+        break;
+
+      case 'z':
+        pmbus_send_by_name("FAN_COMMAND_1", 0x12);
+        break;
+      case 'Z':
+        pmbus_send_by_name("FAN_COMMAND_1", 0x26);
+        break;
+      case 'x':
+        pmbus_send_by_name("FAN_COMMAND_1", 0x62);
+        break;
+      case 'X':
+        pmbus_send_by_name("FAN_COMMAND_1", 0x64); // Can't set fans past 0x64/100.. they couldn't normalize the range?!
+        break;
+      case 'c':
+        pmbus_send_by_name("FAN_COMMAND_1", 0x66);
+        break;
+      case 'C':
+        pmbus_send_by_name("FAN_COMMAND_1", 0xeb1f);
         break;
     }
   }
@@ -122,7 +151,18 @@ void parse_message(char *omsg) {
   return;
 }
 
+void parse_write(int argc, char *argv[]) {
 
+}
+
+void parse_read(int argc, char *argv[]) {
+
+
+}
+
+void parse_set_fan(int argc, char *argv[]) {
+
+}
 void serial_read() {
   while (Serial.available() > 0) {
     uint8_t c = Serial.read();
@@ -160,6 +200,35 @@ char *string_to_hex(char *string, int maxn) {
   }
   return(&buf[0]);
 }
+
+//0x0f 0x1a
+
+long hexstring_to_long(const char *h) {
+  char *n = (char *) malloc(strlen(h) + 1);
+  char *stripped = hexstring_strip(h, n);
+  printf("stripped string: %s\n", stripped);
+  free(n);
+  return(strtol(stripped, NULL, 16));
+}
+
+char *hexstring_strip(const char *h, char *n) {
+  memset(n, 0, strlen(h) + 1);
+  const char *h_start = h;
+  char *n_start = n;
+
+  while (*h) {
+    if (*h == '0' && *(h+1) == 'x') {
+      h++;
+      continue;
+    }
+    if ((*h >= '0' && *h <= '9') || (*h >= 'a' && *h <= 'f') || (*h >= 'A' && *h <= 'F')) {
+      *n++ = *h;
+    }
+    h++;
+  }
+  return (n_start);
+}
+
 
 
 
