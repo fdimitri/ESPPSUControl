@@ -9,3 +9,4 @@ extern unsigned char pmbus_crc8(unsigned char *d, int n);
 extern void pmbus_read_all();
 extern float pmbus_convert_linear16_to_float(int16_t value, int16_t vout_mode);
 extern float pmbus_convert_linear11_to_float(int16_t value);
+extern float pmbus_convert_linear11_to_float_bitwise(uint16_t value);

@@ -42,7 +42,7 @@ void pmbus_read_all() {
         Serial.printf("(0x%02x)%24s: 0x%04x (ERROR)\n", p->reg, p->name, buffer);
       }
       else {
-        Serial.printf("(0x%02x)%24s: 0x%04x (L11:%f) (L16:%f)\n", p->reg, p->name, buffer, pmbus_convert_linear11_to_float(buffer), pmbus_convert_linear16_to_float(buffer,0x17));
+        Serial.printf("(0x%02x)%24s: 0x%04x (L11:%f) (L16:%f)\n", p->reg, p->name, buffer, pmbus_convert_linear11_to_float_bitwise(buffer), pmbus_convert_linear16_to_float(buffer,0x17));
       }
     }
     delay(100);
@@ -194,3 +194,14 @@ float pmbus_convert_linear16_to_float(int16_t value, int16_t vout_mode) {
   linear16_t *v = (linear16_t *) &vout_mode;
   return((float) value * powf(2, v->mantissa));
 }
+
+float pmbus_convert_linear11_to_float_bitwise(uint16_t value) {
+    // Move some bits
+    int8_t exponent = value >> 11; 
+    int16_t mantissa = value & 0x7ff;
+
+    if (exponent > 0x0F) exponent |= 0xE0;      // sign extend exponent
+    if (mantissa > 0x03FF) mantissa |= 0xF800;  // sign extend mantissa
+
+    return(mantissa * powf(2, exponent));
+ }

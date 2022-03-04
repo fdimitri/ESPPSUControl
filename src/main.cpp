@@ -26,6 +26,7 @@ uint8_t serial_command_buffer_ptr = 0;
 
 void parse_write(int argc, char *argv[]);
 void parse_read(int argc, char *argv[]);
+void parse_scan_i2c(int argc, char *argv[]);
 void parse_set_fan(int argc, char *argv[]);
 void parse_message(char *msg);
 void serial_read();
@@ -39,6 +40,7 @@ void pmbus_read_all();
 SerialCommand serial_commands[] = {
   { "read", "r", parse_read },
   { "write", "w", parse_write },
+  { "scan_i2c", "s", parse_scan_i2c },
   { "power_off", "poff", NULL },
   { "power_on", "pon", NULL },
   { "set_fan", "sf", NULL },
@@ -149,7 +151,7 @@ void parse_message(char *omsg) {
   }
   
   for (unsigned int i = 0; serial_commands[i].command != NULL; i++) {
-    if (!strcasecmp(serial_commands[i].command, argv[0])) {
+    if (!strcasecmp(serial_commands[i].command, argv[0]) || !strcmp(serial_commands[i].mnemonic, argv[0])) {
       if (serial_commands[i].callback) serial_commands[i].callback(argc + 1, argv);
       else Serial.printf("Command %s at index %d has no callback..?\n", argv[0], i);
       free(msgstart);
@@ -160,6 +162,10 @@ void parse_message(char *omsg) {
 
   free(msgstart);
   return;
+}
+
+void parse_scan_i2c(int argc, char *argv[]) {
+  scan_i2c_bus();
 }
 
 void parse_write(int argc, char *argv[]) {
@@ -177,14 +183,14 @@ void parse_write(int argc, char *argv[]) {
   }
   
   // Reverse Byte Order?
-  for (unsigned int i = 0; i < argc - 2; i++) {
-    buffer |= strtol(argv[i+2], NULL, 16) << ((argc - 3 - i) * 8);
-  }
+  // for (unsigned int i = 0; i < argc - 2; i++) {
+  //   buffer |= strtol(argv[i+2], NULL, 16) << ((argc - 3 - i) * 8);
+  // }
 
   // Forward byte order
-  // for (unsigned int i = 0; i < argc - 2; i++) {
-  //   buffer |= strtol(argv[i+2], NULL, 16) << ((i-2) * 8);
-  // }
+  for (unsigned int i = 0; i < argc - 2; i++) {
+    buffer |= strtol(argv[i+2], NULL, 16) << (i * 8);
+  }
   
   if (!strncmp("0x", argv[1], 2)) {
     cmdregister = strtol(argv[1], NULL, 16);
@@ -223,6 +229,11 @@ void parse_read(int argc, char *argv[]) {
 
   if (argc > 2) {
     Serial.printf("Too many arguments! I'm leaving.\n");
+    return;
+  }
+
+  if (!strcasecmp("all", argv[1])) {
+    pmbus_read_all();
     return;
   }
 
@@ -304,7 +315,7 @@ char *hexstring_strip(const char *h, char *n) {
 
   while (*h) {
     if (*h == '0' && *(h+1) == 'x') {
-      h++;
+      h++;h++;
       continue;
     }
     if ((*h >= '0' && *h <= '9') || (*h >= 'a' && *h <= 'f') || (*h >= 'A' && *h <= 'F')) {
@@ -315,38 +326,20 @@ char *hexstring_strip(const char *h, char *n) {
   return (n_start);
 }
 
-
-
-
-
 void scan_i2c_bus() {
   byte error, address; 
-  int nDevices;
 
   Serial.println("Scanning...");
 
-  nDevices = 0;
   for (address = 1; address < 127; address++ ) {
-
     Wire.beginTransmission(address);
     error = Wire.endTransmission();
-
     if (!error) {
-      Serial.print("I2C device found at address 0x");
-      Serial.printf("%x\n", address);
-      Serial.println("  !");
-      nDevices++;
+      Serial.printf("I2C device found at address 0x%2x\n", address);   
     }
     else if (error == 4) {
-      Serial.print("Unknown error at address 0x");
-      Serial.printf("%x\n", address);
+      Serial.printf("Unknown error at address 0x%2x\n", address);
     }
-  }
-  if (nDevices == 0) {
-    Serial.println("No I2C devices found\n");
-  }
-  else {
-    Serial.println("done\n");
   }
 }
 
