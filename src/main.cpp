@@ -53,8 +53,14 @@ void setup() {
   delay(2500);
   Serial.begin(115200);
   Wire.setClock(CONFIG_IIC_SPEED);
-
+  
+#ifdef ESP32
   Wire.begin(21, 22, CONFIG_IIC_SPEED);
+  Serial.printf("ESP32 is defined\n");
+#elif ESP8266
+  Wire.begin(4, 5, CONFIG_IIC_SPEED);
+  Serial.printf("ESP8266 is defined\n");
+#endif
   Wire.setClock(CONFIG_IIC_SPEED);
   uint8_t cmdBytes = 0x80;
   pmbus_write(I2C_PSU_ADDRESS, 0x01, 1, &cmdBytes);
@@ -83,52 +89,7 @@ void loop() {
   //scan_i2c_bus();
   char sbuf;
   PMBusCommand *p;
-  if (0 && Serial.available() > 0 && Serial.read(&sbuf, 1)) {
-    switch (sbuf) {
-      case 'r':
-        pmbus_read_all();
-        break;
-      case 'f':
-        pmbus_send_by_name("FAN_COMMAND_1", 0x0a);
-        pmbus_send_by_name("FAN_SPEED_TEST", 0x0a);
-        break;
-      case 'F':
-        pmbus_send_by_name("FAN_COMMAND_1", 0xFFFFFFFF);
-        pmbus_send_by_name("FAN_SPEED_TEST", 0xFFFFFFFF);
-
-        break;
-      case 's':
-      case 'S':
-        scan_i2c_bus();
-        break;
-      case 'p':
-        pmbus_send_by_name("OPERATION", 0x0);
-        break;
-      case 'P':
-        pmbus_send_by_name("OPERATION", 0x80);
-        break;
-
-      case 'z':
-        pmbus_send_by_name("FAN_COMMAND_1", 0x12);
-        break;
-      case 'Z':
-        pmbus_send_by_name("FAN_COMMAND_1", 0x26);
-        break;
-      case 'x':
-        pmbus_send_by_name("FAN_COMMAND_1", 0x62);
-        break;
-      case 'X':
-        pmbus_send_by_name("FAN_COMMAND_1", 0x64); // Can't set fans past 0x64/100.. they couldn't normalize the range?!
-        break;
-      case 'c':
-        pmbus_send_by_name("FAN_COMMAND_1", 0x66);
-        break;
-      case 'C':
-        pmbus_send_by_name("FAN_COMMAND_1", 0xeb1f);
-        break;
-    }
-  }
-  else {
+  while (Serial.available()) {
     serial_read();
   }
 }
