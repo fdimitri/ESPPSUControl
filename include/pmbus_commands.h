@@ -1,3 +1,5 @@
+#include "structs.h"
+
 PMBusCommand pmbus_commands[] = {
   { "OPERATION", 0x01, PMBUS_WRITE, 1, stub, stub },
   { "ON_OFF_CONFIG", 0x02, PMBUS_RW, 1, stub, stub },

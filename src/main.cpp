@@ -12,14 +12,13 @@
 
 #include "structs.h"
 #include "pmbus.h"
+#include "display.h"
 
 #ifndef ARDUINO
 #include "linux_arduino_wrapper.h"
 #endif
 void scan_i2c_bus();
 
-
-#define CONFIG_IIC_SPEED 100000
 char serial_command_buffer[256];
 uint8_t serial_command_buffer_ptr = 0;
 
@@ -28,6 +27,7 @@ void parse_write(int argc, char *argv[]);
 void parse_read(int argc, char *argv[]);
 void parse_scan_i2c(int argc, char *argv[]);
 void parse_set_fan(int argc, char *argv[]);
+void parse_measurement_mode(int argc, char *argv[]);
 void parse_message(char *msg);
 void serial_read();
 
@@ -45,8 +45,31 @@ SerialCommand serial_commands[] = {
   { "power_on", "pon", NULL },
   { "set_fan", "sf", NULL },
   { "clear_faults", "clr", NULL },
+  { "measurement_mode", "mm", parse_measurement_mode },
   { NULL, NULL, NULL }
 };
+
+#define STATS_NSAMPLES 256
+
+struct statsItem {
+  float peak;
+  float min;
+  float samples[STATS_NSAMPLES];
+  uint8_t hptr, tptr;
+};
+
+struct statsRecorder {
+  statsItem inVolts;
+  statsItem outVolts;
+  statsItem inWatts;
+};
+
+statsRecorder stats;
+
+uint32_t runFlags = 0x0;
+
+#define RUNFLAG_MODE_MEASUREMENT 0x01
+
 
 
 void setup() {
@@ -58,46 +81,40 @@ void setup() {
   Wire.begin(21, 22, CONFIG_IIC_SPEED);
   Serial.printf("ESP32 is defined\n");
 #elif ESP8266
-  Wire.begin(4, 5, CONFIG_IIC_SPEED);
-  Serial.printf("ESP8266 is defined\n");
+  Wire.begin(D3, D1);  
+  Serial.printf("ESP8266 is defined, using SDA/pin %d and SCL/pin %d\n", D3, D1);
 #endif
-  Wire.setClock(CONFIG_IIC_SPEED);
-  uint8_t cmdBytes = 0x80;
-  pmbus_write(I2C_PSU_ADDRESS, 0x01, 1, &cmdBytes);
 
-  cmdBytes = 0x00;
-  pmbus_write(I2C_PSU_ADDRESS, 0x10, 1, &cmdBytes);
+  Wire.setClock(100000);
 
-  cmdBytes = 0x18;
-  pmbus_write(I2C_PSU_ADDRESS, 0x02, 1, &cmdBytes);
+  Serial.println("Initializing display..");
+  
+  if (oled_init() < 0) {
+    Serial.println("oled_init() failed!");
+  }
 
-  cmdBytes = 0xFF;
-  pmbus_write(I2C_PSU_ADDRESS, 0x03, 0, &cmdBytes);
-
-  cmdBytes = 0x80;
-  pmbus_write(I2C_PSU_ADDRESS, 0x01, 1, &cmdBytes);
-
-  pmbus_send_by_name("WRITE_PROTECT", 0x0);
-  pmbus_send_by_name("OPERATION", 0x80);
-  pmbus_send_by_name("ON_OFF_CONFIG", 0xA);
-  //pmbus_send_by_name("VOUT_COMMAND", 0x1801);
-  pmbus_send_by_name("VOUT_COMMAND", 0x0118);
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-  //scan_i2c_bus();
-  char sbuf;
-  PMBusCommand *p;
   while (Serial.available()) {
     serial_read();
   }
+  if (runFlags & RUNFLAG_MODE_MEASUREMENT) {
+    read_stats();
+  }
+}
+
+void read_stats() {
+  uint32_t buffer;
+  pmbus_request_by_name("READ_POUT", (byte *) &buffer);
 }
 
 void parse_message(char *omsg) {
   char *argv[32];
   unsigned int argc = 0;
   char *msg, *msgstart;
+
+  oled_printf("%s", omsg);
 
   msgstart = msg = (char *) malloc(strlen(omsg) + 1);
   memcpy(msg, omsg, strlen(omsg));
@@ -149,7 +166,7 @@ void parse_write(int argc, char *argv[]) {
   // }
 
   // Forward byte order
-  for (unsigned int i = 0; i < argc - 2; i++) {
+  for (int i = 0; i < argc - 2; i++) {
     buffer |= strtol(argv[i+2], NULL, 16) << (i * 8);
   }
   
@@ -221,6 +238,15 @@ void parse_read(int argc, char *argv[]) {
 void parse_set_fan(int argc, char *argv[]) {
 
 }
+
+void parse_measurement_mode(int argc, char *argv[]) {
+
+}
+
+void draw_measurement_mode() {
+
+}
+
 void serial_read() {
   while (Serial.available() > 0) {
     uint8_t c = Serial.read();
@@ -253,7 +279,7 @@ void serial_read() {
 char *string_to_hex(char *string, int maxn) {
   static char buf[256];
   memset(&buf, 0 , sizeof(buf));
-  for (unsigned int i = 0; i < maxn; i++) {
+  for (int i = 0; i < maxn; i++) {
     sprintf(&buf[0] + strlen(buf), "0x%02x ", string[i]);
   }
   return(&buf[0]);

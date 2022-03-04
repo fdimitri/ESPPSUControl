@@ -103,33 +103,19 @@ int pmbus_read(uint8_t i2c_address, uint8_t command, uint8_t len, byte *buffer) 
 	Wire.endTransmission(false);
 
 	Wire.requestFrom(i2c_address, len, (uint8_t) true);
-  //++len;
   uint8_t ptr = len;
-  uint8_t timeout = 64;
-  ptr = 0;
-  // delay(5);
-  // Serial.printf("%d bytes", Wire.available());
-  while (!Wire.available() && timeout--) { Serial.printf(".");delay(125);}
-  // while (ptr > 0) {
-  //   Serial.printf("-- %d bytes available from wire..\n", Wire.available());
-  //   buffer[--ptr] = Wire.read();
-  //   delay(1);
-  // }
   delay(5);
-  timeout = 0;
-  if (Wire.available()) {
-    while (ptr < len && timeout < 8) {
-      if (Wire.available()) {
-         buffer[ptr++] = Wire.read();
-      } else {
-        delay(1);
-        timeout++;
-      }
-    }
+
+  Serial.printf("Bytes available on i2c: %d", Wire.available());
+
+  while (Wire.available() && ptr < len) {
+     buffer[ptr++] = Wire.read();
+     delay(1);
   }
+
   if (ptr < len) {
     Serial.printf("\n---Error: only received %d of %d bytes", ptr, len);
-    return(-1);
+    return(-ptr);
   }
   return(0);
 }
@@ -142,9 +128,8 @@ int pmbus_read_string(uint8_t i2c_address, uint8_t command, uint8_t len, byte *b
 
 	Wire.requestFrom(i2c_address, len, (uint8_t) true);
   uint8_t ptr = 0;
-  uint8_t timeout = 0;
 
-  delay(5);
+//  delay(5);
   
   if (!Wire.available()) return(-1);
   uint8_t i2c_length = Wire.read();
