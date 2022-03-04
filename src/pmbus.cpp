@@ -19,6 +19,30 @@
 #include "linux_arduino_wrapper.h"
 #endif
 
+#define PMB_MAX_DEVICES 16
+
+pmbDevice pmb_devices[PMB_MAX_DEVICES];
+
+void pmbus_init() {
+  memset((void *) &pmb_devices, 0, sizeof(pmb_devices));
+  return;
+}
+
+int pmbus_add_device(TwoWire *wire, uint8_t address) {
+  unsigned char i;
+  for (i = 0; pmb_devices[i].wire != NULL && i < PMB_MAX_DEVICES; i++);
+  if (i == PMB_MAX_DEVICES || pmb_devices[i].wire) {
+    return(-1);
+  }
+  pmb_devices[i].wire = wire;
+  pmb_devices[i].address = address;
+  return(i);
+}
+
+void pmbus_remove_device(int idx) {
+  memset(&pmb_devices[idx], 0, sizeof(pmbDevice));
+}
+
 void stub(byte *buffer) {
 
 }
@@ -34,11 +58,11 @@ void pmbus_read_all() {
     if (p->type & PMBUS_READ) {
       if (p->length > 4) {
         memset(&cbuf, 0, sizeof(cbuf));
-        pmbus_request_by_name(p->name, (byte *) &cbuf[0]);
+        pmbus_request_by_name(0, p->name, (byte *) &cbuf[0]);
         Serial.printf("(0x%02x)%24s: 0x%x / %16s %s\n", p->reg, p->name, cbuf, string_to_hex(cbuf, 16), cbuf);
         continue;
       }
-      if (pmbus_request_by_name(p->name, (byte *) &buffer) < 0) {
+      if (pmbus_request_by_name(0, p->name, (byte *) &buffer) < 0) {
         Serial.printf("(0x%02x)%24s: 0x%04x (ERROR)\n", p->reg, p->name, buffer);
       }
       else {
@@ -50,32 +74,32 @@ void pmbus_read_all() {
   Serial.printf("---------------- READING DONE ----------------\n");
 }
 
-int pmbus_send_by_obj(PMBusCommand *p, uint32_t buffer) {
+int pmbus_send_by_obj(int idx, PMBusCommand *p, uint32_t buffer) {
   //byte *bptr = (byte *) &buffer + (sizeof(buffer) - p->length - 1);
   byte *bptr;
   bptr = (byte *) &buffer;
   Serial.printf("Sending command:\n(0x%02x)%24s: %d - 0x%04x", p->reg, p->name, p->length, buffer);
 
-  return(pmbus_write(I2C_PSU_ADDRESS, p->reg, p->length, bptr));
+  return(pmbus_write(idx, p->reg, p->length, bptr));
 }
 
-int pmbus_send_by_name(const char *cmd, uint32_t buffer) {
+int pmbus_send_by_name(int idx, const char *cmd, uint32_t buffer) {
   PMBusCommand *p = pmbus_cmd_get_by_name(cmd);
 
   if (!p) {
     return(-1);
   }
-  return(pmbus_send_by_obj(p, buffer));
+  return(pmbus_send_by_obj(idx, p, buffer));
 }
 
-int pmbus_request_by_name(const char *cmd, byte *buffer) {
+int pmbus_request_by_name(int idx, const char *cmd, byte *buffer) {
   PMBusCommand *pcmd = pmbus_cmd_get_by_name(cmd);
 
   if (!pcmd) {
     return(-1);
   }
   
-  return(pmbus_read(I2C_PSU_ADDRESS, pcmd->reg, pcmd->length, buffer));
+  return(pmbus_read(idx, pcmd->reg, pcmd->length, buffer));
 }
 
 PMBusCommand *pmbus_cmd_get_by_register(uint8_t reg) {
@@ -96,20 +120,35 @@ PMBusCommand *pmbus_cmd_get_by_name(const char *cmd) {
   return(NULL);
 }
 
-int pmbus_read(uint8_t i2c_address, uint8_t command, uint8_t len, byte *buffer) {
-    Wire.beginTransmission(i2c_address);
-	Wire.write(command);
-  //Wire.write(crc8(&command, 1));
-	Wire.endTransmission(false);
+pmbDevice *pmbus_get_device(int idx) {
+  if (idx < 0 || idx >= PMB_MAX_DEVICES) {
+    return(NULL);
+  }
+  if (pmb_devices[idx].wire != NULL) {
+    return(&pmb_devices[idx]);
+  }
+  return(NULL);
+}
 
-	Wire.requestFrom(i2c_address, len, (uint8_t) true);
+int pmbus_read(int idx, uint8_t command, uint8_t len, byte *buffer) {
+  pmbDevice *p;
+  if (!(p = pmbus_get_device(idx))) {
+    return(-1);
+  }
+  
+  p->wire->beginTransmission(p->address);
+	p->wire->write(command);
+  //Wire.write(crc8(&command, 1));
+	p->wire->endTransmission(false);
+
+	p->wire->requestFrom(p->address, len, (uint8_t) true);
   uint8_t ptr = len;
   delay(5);
 
-  Serial.printf("Bytes available on i2c: %d", Wire.available());
+  Serial.printf("Bytes available on i2c: %d\n", p->wire->available());
 
-  while (Wire.available() && ptr < len) {
-     buffer[ptr++] = Wire.read();
+  while (p->wire->available() && ptr < len) {
+     buffer[ptr++] = p->wire->read();
      delay(1);
   }
 
@@ -141,18 +180,23 @@ int pmbus_read_string(uint8_t i2c_address, uint8_t command, uint8_t len, byte *b
   return(0);
 }
 
-int pmbus_write(uint8_t i2c_address, uint8_t command, uint8_t len, byte *buffer) {
-  Serial.printf("Starting write to 0x%02x at register 0x%02x: ", i2c_address, command);
-  Wire.beginTransmission(i2c_address);
-	Wire.write(command);
+int pmbus_write(int idx, uint8_t command, uint8_t len, byte *buffer) {
+  pmbDevice *p;
+  if (!(p = pmbus_get_device(idx))) {
+    return(-1);
+  }
+
+  Serial.printf("Starting write to 0x%02x at register 0x%02x: ", p->address, command);
+  p->wire->beginTransmission(p->address);
+	p->wire->write(command);
   for (uint8_t n = 0; n < len; n++) {
     Serial.printf("0x%02x ", buffer[n]);
-    Wire.write(buffer[n]);
+    p->wire->write(buffer[n]);
   }
   Serial.printf(".. completed\n");
   //Wire.write(crc8(&command, 1));
 
-	Wire.endTransmission(true);
+	p->wire->endTransmission(true);
 
   return(0);
 }

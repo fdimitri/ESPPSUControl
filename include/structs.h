@@ -62,4 +62,10 @@ struct linear16_t {
   int16_t mantissa : 5;
   int16_t ignored : 11;
 };
+
+struct pmbDevice {
+  TwoWire *wire;
+  uint8_t address;
+};
+
 #endif

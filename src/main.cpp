@@ -17,7 +17,7 @@
 #ifndef ARDUINO
 #include "linux_arduino_wrapper.h"
 #endif
-void scan_i2c_bus();
+void scan_i2c_bus(TwoWire *wire);
 
 char serial_command_buffer[256];
 uint8_t serial_command_buffer_ptr = 0;
@@ -81,8 +81,8 @@ void setup() {
   Wire.begin(21, 22, CONFIG_IIC_SPEED);
   Serial.printf("ESP32 is defined\n");
 #elif ESP8266
-  Wire.begin(D3, D1);  
-  Serial.printf("ESP8266 is defined, using SDA/pin %d and SCL/pin %d\n", D3, D1);
+  Wire.begin(D6, D5);  
+  Serial.printf("ESP8266 is defined, using SDA/pin %d and SCL/pin %d\n", D6, D5);
 #endif
 
   Wire.setClock(100000);
@@ -93,6 +93,15 @@ void setup() {
     Serial.println("oled_init() failed!");
   }
 
+  pmbus_init();
+  int pfd = pmbus_add_device(&Wire, 0x58);
+  oled_printf("\nGot PMBus Device ID: %d\n", pfd);
+ 
+}
+
+void read_stats() {
+  uint32_t buffer;
+  pmbus_request_by_name(0, "READ_POUT", (byte *) &buffer);
 }
 
 void loop() {
@@ -102,11 +111,6 @@ void loop() {
   if (runFlags & RUNFLAG_MODE_MEASUREMENT) {
     read_stats();
   }
-}
-
-void read_stats() {
-  uint32_t buffer;
-  pmbus_request_by_name("READ_POUT", (byte *) &buffer);
 }
 
 void parse_message(char *omsg) {
@@ -143,7 +147,19 @@ void parse_message(char *omsg) {
 }
 
 void parse_scan_i2c(int argc, char *argv[]) {
-  scan_i2c_bus();
+  Serial.printf("parse_scan_i2c(%d, char *[])\n", argc);
+  if (argc == 2) {
+    if (!strcasecmp("main", argv[1])) {
+      scan_i2c_bus(&Wire);
+    }
+    return;
+  }
+  scan_i2c_bus(&Wire);
+  return;
+}
+
+void parse_create_i2c(int argc, char *argv[]) {
+
 }
 
 void parse_write(int argc, char *argv[]) {
@@ -183,14 +199,14 @@ void parse_write(int argc, char *argv[]) {
     Serial.printf("Couldn't find PMBus command by %s\n", argv[1]);
     if (!cmdregister) return;
     else {
-      pmbus_write(I2C_PSU_ADDRESS, cmdregister, argc - 2, (byte *) buffer);
+      pmbus_write(0, cmdregister, argc - 2, (byte *) buffer);
       return;
     }
   }
 
   Serial.printf("Found PMBus command information for %s at 0x%2x takes %d bytes\n", p->name, p->reg, p->length);
-
-  pmbus_send_by_obj(p, buffer);
+  
+  pmbus_send_by_obj(0, p, buffer);
   
   Serial.printf("Writing to %02x: %04x\n", cmdregister, buffer);
 }
@@ -230,8 +246,8 @@ void parse_read(int argc, char *argv[]) {
   }
 
   Serial.printf("Found PMBus command information for %s at 0x%2x takes %d bytes\n", p->name, p->reg, p->length);
-  pmbus_request_by_name(p->name, (byte *) &buffer);
-  Serial.printf("Device responded with: %lx\n", buffer);
+  pmbus_request_by_name(0, p->name, (byte *) &buffer);
+  Serial.printf("Device responded with: %llx\n", buffer);
   
 }
 
@@ -297,7 +313,7 @@ long hexstring_to_long(const char *h) {
 
 char *hexstring_strip(const char *h, char *n) {
   memset(n, 0, strlen(h) + 1);
-  const char *h_start = h;
+//  const char *h_start = h;
   char *n_start = n;
 
   while (*h) {
@@ -313,20 +329,51 @@ char *hexstring_strip(const char *h, char *n) {
   return (n_start);
 }
 
-void scan_i2c_bus() {
-  byte error, address; 
 
-  Serial.println("Scanning...");
-
-  for (address = 1; address < 127; address++ ) {
-    Wire.beginTransmission(address);
-    error = Wire.endTransmission();
-    if (!error) {
-      Serial.printf("I2C device found at address 0x%2x\n", address);   
+void print_i2c_bus_info(uint16_t devices[8]) {
+  Serial.printf("    \t");
+  for (uint8_t c = 0; c < 0x10; c++) {
+    Serial.printf("%x\t", c);
+  }
+  Serial.printf("\n");
+  for (uint8_t c = 0; c < 128; c++) Serial.print("-");
+  Serial.println("");
+  for (uint8_t highN = 0; highN < 0x8; highN++) {
+    Serial.printf("0x%x\t", highN);
+    for (uint8_t lowN = 0; lowN < 0x10; lowN++) {
+      Serial.printf("%d\t", devices[highN] & (1<<lowN) ? 1 : 0);
     }
-    else if (error == 4) {
-      Serial.printf("Unknown error at address 0x%2x\n", address);
+    Serial.printf("\n");
+  }
+}
+
+void scan_i2c_bus(TwoWire *wire) {
+  byte error;
+  uint8_t address; 
+  uint16_t devices[8];
+  uint8_t numDevices = 0;
+  for (uint8_t highN = 0; highN < 0x8; highN++) {
+    devices[highN] = 0;
+    for (uint8_t lowN = 0; lowN < 0x10; lowN++) {
+      address = ((highN << 4) + lowN);
+      if (!address) {       // I2C address 0x0 is special
+        continue;
+      }
+      wire->beginTransmission(address);
+      error = wire->endTransmission();
+      if (!error) {
+        Serial.printf("I2C device found at address 0x%2x\n", address);   
+        devices[highN] |= 1 << lowN;
+        numDevices++;
+      }
+      else if (error == 4) {
+        Serial.printf("Unknown error at address 0x%2x\n", address);
+      }
     }
   }
+  // for (uint8_t c = 0; c < 0x8; c++) {
+  //   printf("%016x\n", devices[c]);
+  // }
+  print_i2c_bus_info(devices);
 }
 
