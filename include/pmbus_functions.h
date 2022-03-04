@@ -14,7 +14,7 @@ int pmbus_send_by_obj(int idx, PMBusCommand *p, uint32_t buffer);
 PMBusCommand *pmbus_cmd_get_by_name(const char *cmd);
 PMBusCommand *pmbus_cmd_get_by_register(uint8_t reg);
 
-unsigned char pmbus_crc8(unsigned char *d, int n);
+unsigned char pmbus_crc8(unsigned char *d, unsigned int n);
 void pmbus_read_all();
 
 float pmbus_convert_linear16_to_float(int16_t value, int16_t vout_mode);

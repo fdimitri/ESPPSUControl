@@ -30,6 +30,7 @@ void parse_set_fan(int argc, char *argv[]);
 void parse_measurement_mode(int argc, char *argv[]);
 void parse_message(char *msg);
 void serial_read();
+void parse_attach_psu(int argc, char *argv[]);
 
 char *string_to_hex(char *string, int maxn);
 char *hexstring_strip(const char *h, char *n);
@@ -46,6 +47,7 @@ SerialCommand serial_commands[] = {
   { "set_fan", "sf", NULL },
   { "clear_faults", "clr", NULL },
   { "measurement_mode", "mm", parse_measurement_mode },
+  { "attach_psu", "ap", parse_attach_psu },
   { NULL, NULL, NULL }
 };
 
@@ -313,12 +315,11 @@ long hexstring_to_long(const char *h) {
 
 char *hexstring_strip(const char *h, char *n) {
   memset(n, 0, strlen(h) + 1);
-//  const char *h_start = h;
   char *n_start = n;
 
   while (*h) {
     if (*h == '0' && *(h+1) == 'x') {
-      h++;h++;
+      h++;
       continue;
     }
     if ((*h >= '0' && *h <= '9') || (*h >= 'a' && *h <= 'f') || (*h >= 'A' && *h <= 'F')) {
@@ -371,9 +372,29 @@ void scan_i2c_bus(TwoWire *wire) {
       }
     }
   }
+  Serial.printf("Found %d devices on this bus\n", numDevices);
   // for (uint8_t c = 0; c < 0x8; c++) {
   //   printf("%016x\n", devices[c]);
   // }
   print_i2c_bus_info(devices);
 }
 
+void parse_attach_psu(int argc, char *argv[]) {
+  // ap BUS_NAME HEX_ADDR
+  if (argc != 3) {
+    Serial.printf("attach_psu: Unsupported number of arguments\n");
+    return;
+  }
+  if (strcasecmp("main", argv[1])) {
+    Serial.printf("attach_psu: NYI multiple i2c busses, use 'main' only\n");
+    return;
+  }
+  uint8_t addr = strtol(argv[2], NULL, 16);
+  if (addr >= 0x01 && addr <= 0x7f) {
+    Serial.printf("Adding device at 0x%x", addr);
+    pmbus_add_device(&Wire, addr);
+    return;
+  }
+  Serial.printf("attach_psu: Invalid or unrecognized i2c address - %s interpreted as 0x%x\n", argv[2], addr);
+  return;
+}

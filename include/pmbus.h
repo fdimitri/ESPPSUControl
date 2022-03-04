@@ -10,7 +10,7 @@ extern int pmbus_send_by_obj(int idx, PMBusCommand *p, uint32_t buffer);
 extern PMBusCommand *pmbus_cmd_get_by_name(const char *cmd);
 extern PMBusCommand *pmbus_cmd_get_by_register(uint8_t reg);
 
-extern unsigned char pmbus_crc8(unsigned char *d, int n);
+extern unsigned char pmbus_crc8(unsigned char *d, unsigned int n);
 extern void pmbus_read_all();
 
 extern float pmbus_convert_linear16_to_float(int16_t value, int16_t vout_mode);

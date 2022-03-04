@@ -51,7 +51,9 @@ void pmbus_read_all() {
   uint32_t buffer;
   char cbuf[16];
   PMBusCommand *p;
+
   Serial.printf("---------------- READING ALL ----------------\n");
+
   for (uint32_t i = 0; pmbus_commands[i].name != NULL; i++) {
     p = &pmbus_commands[i];
     buffer = 0;
@@ -159,22 +161,27 @@ int pmbus_read(int idx, uint8_t command, uint8_t len, byte *buffer) {
   return(0);
 }
 
-int pmbus_read_string(uint8_t i2c_address, uint8_t command, uint8_t len, byte *buffer) {
-  Wire.beginTransmission(i2c_address);
-	Wire.write(command);
-  //Wire.write(crc8(&command, 1));
-	Wire.endTransmission(false);
+int pmbus_read_string(uint8_t idx, uint8_t command, uint8_t len, byte *buffer) {
+  pmbDevice *p;
+  if (!(p = pmbus_get_device(idx))) {
+    return(-1);
+  }
 
-	Wire.requestFrom(i2c_address, len, (uint8_t) true);
+  p->wire->beginTransmission(p->address);
+	p->wire->write(command);
+  //Wire.write(crc8(&command, 1));
+	p->wire->endTransmission(false);
+
+	p->wire->requestFrom(p->address, len, (uint8_t) true);
   uint8_t ptr = 0;
 
 //  delay(5);
   
-  if (!Wire.available()) return(-1);
-  uint8_t i2c_length = Wire.read();
+  if (!p->wire->available()) return(-1);
+  uint8_t i2c_length = p->wire->read();
 
   while (ptr < i2c_length && ptr < len) {
-    buffer[ptr++] = Wire.read();
+    buffer[ptr++] = p->wire->read();
   }
 
   return(0);
@@ -201,7 +208,7 @@ int pmbus_write(int idx, uint8_t command, uint8_t len, byte *buffer) {
   return(0);
 }
 
-unsigned char pmbus_crc8(unsigned char *d, int n) {
+unsigned char pmbus_crc8(unsigned char *d, unsigned int n) {
   unsigned char pec = 0;
   for (unsigned int i = 0; i < n; i++) {
     pec ^= d[i];
@@ -212,14 +219,11 @@ unsigned char pmbus_crc8(unsigned char *d, int n) {
 
 
 float pmbus_convert_linear11_to_float(uint16_t value) {
-  // I could bang bits around like crazy and play the 2s complement XOR game, but if the compiler wants to do it for me..
   linear11_t *v = (linear11_t *) &value;
   return((float) v->base * powf(2, v->mantissa));
 }
 
 float pmbus_convert_linear16_to_float(int16_t value, int16_t vout_mode) {
-  // I could bang bits around like crazy and play the 2s complement XOR game, but if the compiler wants to do it for me..
-  // Maybe I should write a bunch of bitwise operators just for the fun of it?
   linear16_t *v = (linear16_t *) &vout_mode;
   return((float) value * powf(2, v->mantissa));
 }
