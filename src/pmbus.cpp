@@ -36,6 +36,10 @@ int pmbus_add_device(TwoWire *wire, uint8_t address) {
   }
   pmb_devices[i].wire = wire;
   pmb_devices[i].address = address;
+  pmbus_request_by_name(i, "VOUT_MODE", (byte *) &pmb_devices[i].vout_mode);
+  if (pmb_devices[i].vout_mode == 0) {
+    Serial.printf("pmbus_add_device(): VOUT_MODE was set to 0\n");
+  }
   return(i);
 }
 
@@ -51,6 +55,7 @@ void pmbus_read_all() {
   uint32_t buffer;
   char cbuf[16];
   PMBusCommand *p;
+  int idx = 0;
 
   Serial.printf("---------------- READING ALL ----------------\n");
 
@@ -60,7 +65,7 @@ void pmbus_read_all() {
     if (p->type & PMBUS_READ) {
       if (p->length > 4) {
         memset(&cbuf, 0, sizeof(cbuf));
-        pmbus_request_by_name(0, p->name, (byte *) &cbuf[0]);
+        pmbus_request_by_name(idx, p->name, (byte *) &cbuf[0]);
         Serial.printf("(0x%02x)%24s: 0x%x / %16s %s\n", p->reg, p->name, cbuf, string_to_hex(cbuf, 16), cbuf);
         continue;
       }
@@ -68,7 +73,21 @@ void pmbus_read_all() {
         Serial.printf("(0x%02x)%24s: 0x%04x (ERROR)\n", p->reg, p->name, buffer);
       }
       else {
-        Serial.printf("(0x%02x)%24s: 0x%04x (L11:%f) (L16:%f)\n", p->reg, p->name, buffer, pmbus_convert_linear11_to_float_bitwise(buffer), pmbus_convert_linear16_to_float(buffer,0x17));
+        if (p->type & PMBUS_DATATYPE_DIRECT) {
+          Serial.printf("(0x%02x)%24s: 0x%04x (DIRECT_NYI)\n", p->reg, p->name, buffer);
+        }
+        else if (p->type & PMBUS_DATATYPE_INTEGER) {
+          Serial.printf("(0x%02x)%24s: 0x%04x\n", p->reg, p->name, buffer);
+        }
+        else if (p->type & PMBUS_DATATYPE_LINEAR11) {
+          Serial.printf("(0x%02x)%24s: %f (L11)\n", p->reg, p->name, pmbus_convert_linear11_to_float(buffer));
+        }
+        else if (p->type & PMBUS_DATATYPE_LINEAR16) {
+          Serial.printf("(0x%02x)%24s: %f (L16)\n", p->reg, p->name, pmbus_convert_linear16_to_float(buffer,0x17));
+        }
+        else {
+          Serial.printf("(0x%02x)%24s: 0x%04x (L11:%f) (L16:%f)\n", p->reg, p->name, buffer, pmbus_convert_linear11_to_float_bitwise(buffer), pmbus_convert_linear16_to_float(buffer,0x17));
+        }
       }
     }
     delay(100);
@@ -92,6 +111,21 @@ int pmbus_send_by_name(int idx, const char *cmd, uint32_t buffer) {
     return(-1);
   }
   return(pmbus_send_by_obj(idx, p, buffer));
+}
+
+
+void pmbus_request_float11_by_name(int idx, const char *cmd, float *result) {
+  uint16_t buf;
+  pmbus_request_by_name(idx, cmd, (byte *) &buf);
+  *result = pmbus_convert_linear11_to_float(buf);
+  return;
+}
+
+void pmbus_request_float16_by_name(int idx, const char *cmd, float *result) {
+  uint16_t buf, vout_mode;
+  pmbus_request_by_name(idx, "VOUT_MODE", (byte *) &vout_mode);
+  pmbus_request_by_name(idx, cmd, (byte *) &buf);
+  *result = pmbus_convert_linear16_to_float(buf, vout_mode);
 }
 
 int pmbus_request_by_name(int idx, const char *cmd, byte *buffer) {
@@ -142,16 +176,16 @@ int pmbus_read(int idx, uint8_t command, uint8_t len, byte *buffer) {
 	p->wire->write(command);
   //Wire.write(crc8(&command, 1));
 	p->wire->endTransmission(false);
-
+  // delay(10);
 	p->wire->requestFrom(p->address, len, (uint8_t) true);
   uint8_t ptr = len;
-  delay(5);
-
-  Serial.printf("Bytes available on i2c: %d\n", p->wire->available());
-
+  // delay(10);
+  if (p->wire->available() != len) {
+    Serial.printf("Bytes available on i2c: %d, expected %d\n", p->wire->available(), len);
+  }
   while (p->wire->available() && ptr < len) {
      buffer[ptr++] = p->wire->read();
-     delay(1);
+    //  delay(1);
   }
 
   if (ptr < len) {
@@ -169,7 +203,7 @@ int pmbus_read_string(uint8_t idx, uint8_t command, uint8_t len, byte *buffer) {
 
   p->wire->beginTransmission(p->address);
 	p->wire->write(command);
-  //Wire.write(crc8(&command, 1));
+//  p->wire->write(pmbus_crc8(&command, 1));
 	p->wire->endTransmission(false);
 
 	p->wire->requestFrom(p->address, len, (uint8_t) true);
@@ -193,7 +227,7 @@ int pmbus_write(int idx, uint8_t command, uint8_t len, byte *buffer) {
     return(-1);
   }
 
-  Serial.printf("Starting write to 0x%02x at register 0x%02x: ", p->address, command);
+  Serial.printf("\nStarting write to 0x%02x at register 0x%02x: ", p->address, command);
   p->wire->beginTransmission(p->address);
 	p->wire->write(command);
   for (uint8_t n = 0; n < len; n++) {

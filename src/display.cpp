@@ -38,7 +38,7 @@ int oled_init(void) {
   display.setTextSize(1);      // Normal 1:1 pixel scale
   display.setTextColor(SSD1306_WHITE); // Draw white text
   display.setCursor(0, 0);     // Start at top-left corner
-  display.setRotation(2);
+  display.setRotation(0);
   display.cp437(true);         // Use full 256 char 'Code Page 437' font
   oled_printf("Display started!");
   return(0);
