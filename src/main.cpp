@@ -150,7 +150,7 @@ void setup() {
   }
 
   pmbus_init();
-  int pfd = pmbus_add_device(&Wire, 0x6c);
+  int pfd = pmbus_add_device(&Wire, 0x69);
   oled_printf("\nGot PMBus Device ID: %d\n", pfd);
  
 }

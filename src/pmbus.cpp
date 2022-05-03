@@ -174,15 +174,17 @@ int pmbus_read(int idx, uint8_t command, uint8_t len, byte *buffer) {
   
   p->wire->beginTransmission(p->address);
 	p->wire->write(command);
-  //Wire.write(crc8(&command, 1));
+  //p->wire->write(pmbus_crc8(&command, 1));
 	p->wire->endTransmission(false);
   // delay(10);
 	p->wire->requestFrom(p->address, len, (uint8_t) true);
-  uint8_t ptr = len;
+  uint8_t ptr = 0;
   // delay(10);
+
   if (p->wire->available() != len) {
     Serial.printf("Bytes available on i2c: %d, expected %d\n", p->wire->available(), len);
   }
+
   while (p->wire->available() && ptr < len) {
      buffer[ptr++] = p->wire->read();
     //  delay(1);
@@ -250,7 +252,6 @@ unsigned char pmbus_crc8(unsigned char *d, unsigned int n) {
   }
   return pec;
 }
-
 
 float pmbus_convert_linear11_to_float(uint16_t value) {
   linear11_t *v = (linear11_t *) &value;
