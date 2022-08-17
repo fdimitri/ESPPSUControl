@@ -16,7 +16,5 @@ job:
   script: "platformio run -e esp32doit-devkit-v1"
   artifacts:
     paths:
-      - .pio/build/firmware.bin
-      - .pio/build/firmware.elf
-      - .pio/build/firmware.map
-      - .pio/build/partitions.bin
+      - .pio/build/esp32doit-devkit-v1/firmware*
+      - .pio/build/esp32doit-devkit-v1/partitions.bin
