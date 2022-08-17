@@ -1,0 +1,16 @@
+image: python:3.9
+
+cache:
+  paths:
+    - ~/.cache/pip
+    - ~/.platformio/.cache
+
+stages:
+ - test
+
+before_script:
+  - "pip install -U platformio"
+
+job:
+  stage: test
+  script: "pio run -e esp32doit-devkit-v1"
