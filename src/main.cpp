@@ -12,14 +12,13 @@
 
 #include "structs.h"
 #include "pmbus.h"
+#include "display.h"
 
 #ifndef ARDUINO
 #include "linux_arduino_wrapper.h"
 #endif
-void scan_i2c_bus();
+void scan_i2c_bus(TwoWire *wire);
 
-
-#define CONFIG_IIC_SPEED 100000
 char serial_command_buffer[256];
 uint8_t serial_command_buffer_ptr = 0;
 
@@ -28,8 +27,10 @@ void parse_write(int argc, char *argv[]);
 void parse_read(int argc, char *argv[]);
 void parse_scan_i2c(int argc, char *argv[]);
 void parse_set_fan(int argc, char *argv[]);
+void parse_measurement_mode(int argc, char *argv[]);
 void parse_message(char *msg);
 void serial_read();
+void parse_attach_psu(int argc, char *argv[]);
 
 char *string_to_hex(char *string, int maxn);
 char *hexstring_strip(const char *h, char *n);
@@ -45,91 +46,126 @@ SerialCommand serial_commands[] = {
   { "power_on", "pon", NULL },
   { "set_fan", "sf", NULL },
   { "clear_faults", "clr", NULL },
+  { "measurement_mode", "mm", parse_measurement_mode },
+  { "attach_psu", "ap", parse_attach_psu },
   { NULL, NULL, NULL }
 };
 
+#define STATS_NSAMPLES 256
+
+struct statsItem {
+  float peak;
+  float min;
+  float samples[STATS_NSAMPLES];
+  uint8_t hptr, tptr;
+};
+
+struct statsRecorder {
+  statsItem outVolts, inVolts;
+  statsItem outWatts, inWatts;
+  statsItem outAmps, inAmps;
+  statsItem efficiency;
+};
+
+
+void stats_update_item(statsItem *cItem, float f);
+void stats_collect(int pfd);
+float stats_get_average(statsItem *cItem);
+void stats_initialize();
+
+statsRecorder stats;
+
+uint32_t runFlags = 0x0;
+
+#define RUNFLAG_MODE_MEASUREMENT 0x01
+
+void stats_collect(int pfd) {
+  uint16_t buf, vomode;
+  struct statsItem *cItem;
+  float f;
+
+  pmbus_request_by_name(pfd, "VOUT_MODE", (byte *) &buf);
+  vomode = buf;
+
+  cItem = &stats.inAmps;
+  pmbus_request_by_name(pfd, "READ_IIN", (byte *) &buf);
+  f = pmbus_convert_linear11_to_float(buf);
+  stats_update_item(cItem, f);
+
+  cItem = &stats.inVolts;
+  pmbus_request_by_name(pfd, "READ_VIN", (byte *) &buf);
+  f = pmbus_convert_linear11_to_float(buf);
+  stats_update_item(cItem, f);
+
+  cItem = &stats.outVolts;
+  pmbus_request_by_name(pfd, "READ_VOUT", (byte *) &buf);
+  f = pmbus_convert_linear16_to_float(buf, vomode);
+  stats_update_item(cItem, f);
+
+  cItem = &stats.outAmps;
+  pmbus_request_by_name(pfd, "READ_IOUT", (byte *) &buf);
+  f = pmbus_convert_linear11_to_float(buf);
+  stats_update_item(cItem, f);
+
+  return;
+}
+
+void stats_update_item(statsItem *cItem, float f) {
+  if (cItem->peak < f) cItem->peak = f;
+  if (cItem->min > f) cItem->min = f;
+  cItem->samples[cItem->tptr++] = f;
+  return;  
+}
+
+float stats_get_average(statsItem *cItem) {
+  float t;
+  for (int i = 0; i < STATS_NSAMPLES; i++) t += cItem->samples[i];
+  return(t / STATS_NSAMPLES);
+}
+
+void stats_initialize() {
+  memset((void *) &stats, 0, sizeof(stats));
+
+}
 
 void setup() {
   delay(2500);
   Serial.begin(115200);
   Wire.setClock(CONFIG_IIC_SPEED);
-
+  
+#ifdef ESP32
   Wire.begin(21, 22, CONFIG_IIC_SPEED);
-  Wire.setClock(CONFIG_IIC_SPEED);
-  uint8_t cmdBytes = 0x80;
-  pmbus_write(I2C_PSU_ADDRESS, 0x01, 1, &cmdBytes);
+  Serial.printf("ESP32 is defined\n");
+#elif ESP8266
+  Wire.begin(D6, D5);  
+  Serial.printf("ESP8266 is defined, using SDA/pin %d and SCL/pin %d\n", D6, D5);
+#endif
 
-  cmdBytes = 0x00;
-  pmbus_write(I2C_PSU_ADDRESS, 0x10, 1, &cmdBytes);
+  Wire.setClock(100000);
 
-  cmdBytes = 0x18;
-  pmbus_write(I2C_PSU_ADDRESS, 0x02, 1, &cmdBytes);
+  Serial.println("Initializing display..");
+  
+  if (oled_init() < 0) {
+    Serial.println("oled_init() failed!");
+  }
 
-  cmdBytes = 0xFF;
-  pmbus_write(I2C_PSU_ADDRESS, 0x03, 0, &cmdBytes);
+  pmbus_init();
+  int pfd = pmbus_add_device(&Wire, 0x69);
+  oled_printf("\nGot PMBus Device ID: %d\n", pfd);
+ 
+}
 
-  cmdBytes = 0x80;
-  pmbus_write(I2C_PSU_ADDRESS, 0x01, 1, &cmdBytes);
-
-  pmbus_send_by_name("WRITE_PROTECT", 0x0);
-  pmbus_send_by_name("OPERATION", 0x80);
-  pmbus_send_by_name("ON_OFF_CONFIG", 0xA);
-  //pmbus_send_by_name("VOUT_COMMAND", 0x1801);
-  pmbus_send_by_name("VOUT_COMMAND", 0x0118);
+void read_stats() {
+  uint32_t buffer;
+  pmbus_request_by_name(0, "READ_POUT", (byte *) &buffer);
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-  //scan_i2c_bus();
-  char sbuf;
-  PMBusCommand *p;
-  if (0 && Serial.available() > 0 && Serial.read(&sbuf, 1)) {
-    switch (sbuf) {
-      case 'r':
-        pmbus_read_all();
-        break;
-      case 'f':
-        pmbus_send_by_name("FAN_COMMAND_1", 0x0a);
-        pmbus_send_by_name("FAN_SPEED_TEST", 0x0a);
-        break;
-      case 'F':
-        pmbus_send_by_name("FAN_COMMAND_1", 0xFFFFFFFF);
-        pmbus_send_by_name("FAN_SPEED_TEST", 0xFFFFFFFF);
-
-        break;
-      case 's':
-      case 'S':
-        scan_i2c_bus();
-        break;
-      case 'p':
-        pmbus_send_by_name("OPERATION", 0x0);
-        break;
-      case 'P':
-        pmbus_send_by_name("OPERATION", 0x80);
-        break;
-
-      case 'z':
-        pmbus_send_by_name("FAN_COMMAND_1", 0x12);
-        break;
-      case 'Z':
-        pmbus_send_by_name("FAN_COMMAND_1", 0x26);
-        break;
-      case 'x':
-        pmbus_send_by_name("FAN_COMMAND_1", 0x62);
-        break;
-      case 'X':
-        pmbus_send_by_name("FAN_COMMAND_1", 0x64); // Can't set fans past 0x64/100.. they couldn't normalize the range?!
-        break;
-      case 'c':
-        pmbus_send_by_name("FAN_COMMAND_1", 0x66);
-        break;
-      case 'C':
-        pmbus_send_by_name("FAN_COMMAND_1", 0xeb1f);
-        break;
-    }
-  }
-  else {
+  while (Serial.available()) {
     serial_read();
+  }
+  if (runFlags & RUNFLAG_MODE_MEASUREMENT) {
+    read_stats();
   }
 }
 
@@ -137,6 +173,8 @@ void parse_message(char *omsg) {
   char *argv[32];
   unsigned int argc = 0;
   char *msg, *msgstart;
+
+  oled_printf("%s", omsg);
 
   msgstart = msg = (char *) malloc(strlen(omsg) + 1);
   memcpy(msg, omsg, strlen(omsg));
@@ -165,7 +203,19 @@ void parse_message(char *omsg) {
 }
 
 void parse_scan_i2c(int argc, char *argv[]) {
-  scan_i2c_bus();
+  Serial.printf("parse_scan_i2c(%d, char *[])\n", argc);
+  if (argc == 2) {
+    if (!strcasecmp("main", argv[1])) {
+      scan_i2c_bus(&Wire);
+    }
+    return;
+  }
+  scan_i2c_bus(&Wire);
+  return;
+}
+
+void parse_create_i2c(int argc, char *argv[]) {
+
 }
 
 void parse_write(int argc, char *argv[]) {
@@ -188,7 +238,7 @@ void parse_write(int argc, char *argv[]) {
   // }
 
   // Forward byte order
-  for (unsigned int i = 0; i < argc - 2; i++) {
+  for (int i = 0; i < argc - 2; i++) {
     buffer |= strtol(argv[i+2], NULL, 16) << (i * 8);
   }
   
@@ -199,20 +249,21 @@ void parse_write(int argc, char *argv[]) {
 
   else {
     p = pmbus_cmd_get_by_name(argv[1]);
+    cmdregister = p->reg;
   }
 
   if (!p) {
     Serial.printf("Couldn't find PMBus command by %s\n", argv[1]);
     if (!cmdregister) return;
     else {
-      pmbus_write(I2C_PSU_ADDRESS, cmdregister, argc - 2, (byte *) buffer);
+      pmbus_write(0, cmdregister, argc - 2, (byte *) buffer);
       return;
     }
   }
 
   Serial.printf("Found PMBus command information for %s at 0x%2x takes %d bytes\n", p->name, p->reg, p->length);
-
-  pmbus_send_by_obj(p, buffer);
+  
+  pmbus_send_by_obj(0, p, buffer);
   
   Serial.printf("Writing to %02x: %04x\n", cmdregister, buffer);
 }
@@ -252,14 +303,23 @@ void parse_read(int argc, char *argv[]) {
   }
 
   Serial.printf("Found PMBus command information for %s at 0x%2x takes %d bytes\n", p->name, p->reg, p->length);
-  pmbus_request_by_name(p->name, (byte *) &buffer);
-  Serial.printf("Device responded with: %lx\n", buffer);
+  pmbus_request_by_name(0, p->name, (byte *) &buffer);
+  Serial.printf("Device responded with: %llx\n", buffer);
   
 }
 
 void parse_set_fan(int argc, char *argv[]) {
 
 }
+
+void parse_measurement_mode(int argc, char *argv[]) {
+
+}
+
+void draw_measurement_mode() {
+
+}
+
 void serial_read() {
   while (Serial.available() > 0) {
     uint8_t c = Serial.read();
@@ -292,7 +352,7 @@ void serial_read() {
 char *string_to_hex(char *string, int maxn) {
   static char buf[256];
   memset(&buf, 0 , sizeof(buf));
-  for (unsigned int i = 0; i < maxn; i++) {
+  for (int i = 0; i < maxn; i++) {
     sprintf(&buf[0] + strlen(buf), "0x%02x ", string[i]);
   }
   return(&buf[0]);
@@ -310,12 +370,11 @@ long hexstring_to_long(const char *h) {
 
 char *hexstring_strip(const char *h, char *n) {
   memset(n, 0, strlen(h) + 1);
-  const char *h_start = h;
   char *n_start = n;
 
   while (*h) {
     if (*h == '0' && *(h+1) == 'x') {
-      h++;h++;
+      h++;
       continue;
     }
     if ((*h >= '0' && *h <= '9') || (*h >= 'a' && *h <= 'f') || (*h >= 'A' && *h <= 'F')) {
@@ -326,20 +385,74 @@ char *hexstring_strip(const char *h, char *n) {
   return (n_start);
 }
 
-void scan_i2c_bus() {
-  byte error, address; 
 
-  Serial.println("Scanning...");
-
-  for (address = 1; address < 127; address++ ) {
-    Wire.beginTransmission(address);
-    error = Wire.endTransmission();
-    if (!error) {
-      Serial.printf("I2C device found at address 0x%2x\n", address);   
+void print_i2c_bus_info(uint16_t devices[8]) {
+  Serial.printf("    \t");
+  for (uint8_t c = 0; c < 0x10; c++) {
+    Serial.printf("%x\t", c);
+  }
+  Serial.printf("\n");
+  for (uint8_t c = 0; c < 128; c++) Serial.print("-");
+  Serial.println("");
+  for (uint8_t highN = 0; highN < 0x8; highN++) {
+    Serial.printf("0x%x\t", highN);
+    for (uint8_t lowN = 0; lowN < 0x10; lowN++) {
+      Serial.printf("%d\t", devices[highN] & (1<<lowN) ? 1 : 0);
     }
-    else if (error == 4) {
-      Serial.printf("Unknown error at address 0x%2x\n", address);
-    }
+    Serial.printf("\n");
   }
 }
 
+void scan_i2c_bus(TwoWire *wire) {
+//  wire = &Wire;
+  byte error;
+  uint8_t address; 
+  uint16_t devices[8];
+  uint8_t numDevices = 0;
+
+  for (uint8_t highN = 0; highN < 0x8; highN++) {
+    devices[highN] = 0;
+    for (uint8_t lowN = 0; lowN < 0x10; lowN++) {
+      address = ((highN << 4) + lowN);
+      if (!address) {       // I2C address 0x0 is special
+        continue;
+      }
+      wire->beginTransmission(address);
+      error = wire->endTransmission();
+      if (!error) {
+        Serial.printf("I2C device found at address 0x%2x\n", address);   
+        devices[highN] |= 1 << lowN;
+        numDevices++;
+      }
+      else if (error == 4) {
+        Serial.printf("Unknown error at address 0x%2x\n", address);
+      }
+    }
+  }
+  oled_printf("\nSCAN!");
+  Serial.printf("Found %d devices on this bus\n", numDevices);
+  // for (uint8_t c = 0; c < 0x8; c++) {
+  //   printf("%016x\n", devices[c]);
+  // }
+  print_i2c_bus_info(devices);
+}
+
+void parse_attach_psu(int argc, char *argv[]) {
+  // ap BUS_NAME HEX_ADDR
+  if (argc != 3) {
+    Serial.printf("attach_psu: Unsupported number of arguments\n");
+    return;
+  }
+  if (strcasecmp("main", argv[1])) {
+    Serial.printf("attach_psu: NYI multiple i2c busses, use 'main' only\n");
+    return;
+  }
+  uint8_t addr = strtol(argv[2], NULL, 16);
+  if (addr >= 0x01 && addr <= 0x7f) {
+    Serial.printf("Adding device at 0x%x", addr);
+    pmbus_add_device(&Wire, addr);
+    return;
+  }
+  Serial.printf("attach_psu: Invalid or unrecognized i2c address - %s interpreted as 0x%x\n", argv[2], addr);
+  return;
+}

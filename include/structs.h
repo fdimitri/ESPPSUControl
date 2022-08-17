@@ -19,12 +19,21 @@ typedef unsigned char byte;
 #define PMBUS_DATATYPE_DIRECT   0x08
 #define PMBUS_DATATYPE_LINEAR11 0x10
 #define PMBUS_DATATYPE_LINEAR16 0x20
+#define PMBUS_DATATYPE_INTEGER  0x40
 
 #define PMBUS_IS_READONLY(x) (x == PMBUS_READ)
 #define PMBUS_IS_READWRITE(x) (x & PMBUS_READ && x & PMBUS_WRITE)
 #define PMBUS_IS_WRITEONLY(x) (x == PMBUS_WRITE)
 
 #define I2C_PSU_ADDRESS 0x58
+
+#define SSD1306_128_32
+
+#define SCREEN_WIDTH 128 // OLED display width, in pixels
+#define SCREEN_HEIGHT 64 // OLED display height, in pixels
+#define OLED_RESET     4 // Reset pin # (or -1 if sharing Arduino reset pin)
+#define SCREEN_ADDRESS 0x3C ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
+#define CONFIG_IIC_SPEED 400U
 
 typedef void (*writeMessage)(byte *buffer);
 typedef void (*readMessage)(byte *buffer);
@@ -54,4 +63,11 @@ struct linear16_t {
   int16_t mantissa : 5;
   int16_t ignored : 11;
 };
+
+struct pmbDevice {
+  TwoWire *wire;
+  uint8_t address;
+  uint16_t vout_mode;
+};
+
 #endif
