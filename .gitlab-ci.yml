@@ -13,4 +13,4 @@ before_script:
 
 job:
   stage: test
-  script: "pio run -e esp32doit-devkit-v1"
+  script: "platformio run -e esp32doit-devkit-v1"
