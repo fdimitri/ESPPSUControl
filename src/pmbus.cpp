@@ -90,7 +90,6 @@ void pmbus_read_all() {
         }
       }
     }
-    delay(100);
   }
   Serial.printf("---------------- READING DONE ----------------\n");
 }
@@ -174,12 +173,11 @@ int pmbus_read(int idx, uint8_t command, uint8_t len, byte *buffer) {
   
   p->wire->beginTransmission(p->address);
 	p->wire->write(command);
-  //p->wire->write(pmbus_crc8(&command, 1));
+  //p->wire->write(pmbus_crc8(&command, 1)); // Send CRC8 with command?
 	p->wire->endTransmission(false);
-  // delay(10);
 	p->wire->requestFrom(p->address, len, (uint8_t) true);
+
   uint8_t ptr = 0;
-  // delay(10);
 
   if (p->wire->available() != len) {
     Serial.printf("Bytes available on i2c: %d, expected %d\n", p->wire->available(), len);
@@ -187,7 +185,6 @@ int pmbus_read(int idx, uint8_t command, uint8_t len, byte *buffer) {
 
   while (p->wire->available() && ptr < len) {
      buffer[ptr++] = p->wire->read();
-    //  delay(1);
   }
 
   if (ptr < len) {
@@ -205,14 +202,12 @@ int pmbus_read_string(uint8_t idx, uint8_t command, uint8_t len, byte *buffer) {
 
   p->wire->beginTransmission(p->address);
 	p->wire->write(command);
-//  p->wire->write(pmbus_crc8(&command, 1));
+//  p->wire->write(pmbus_crc8(&command, 1)); //Send CRC8?
 	p->wire->endTransmission(false);
 
 	p->wire->requestFrom(p->address, len, (uint8_t) true);
   uint8_t ptr = 0;
-
-//  delay(5);
-  
+ 
   if (!p->wire->available()) return(-1);
   uint8_t i2c_length = p->wire->read();
 
@@ -237,7 +232,7 @@ int pmbus_write(int idx, uint8_t command, uint8_t len, byte *buffer) {
     p->wire->write(buffer[n]);
   }
   Serial.printf(".. completed\n");
-  //Wire.write(crc8(&command, 1));
+  //Wire.write(crc8(&command, 1)); // Send CRC8?
 
 	p->wire->endTransmission(true);
 
