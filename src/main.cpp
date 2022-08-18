@@ -159,11 +159,6 @@ void parse_write(int argc, char *argv[]) {
     return;
   }
   
-  // Reverse Byte Order?
-  // for (unsigned int i = 0; i < argc - 2; i++) {
-  //   buffer |= strtol(argv[i+2], NULL, 16) << ((argc - 3 - i) * 8);
-  // }
-
   // Forward byte order
   for (int i = 0; i < argc - 2; i++) {
     buffer |= strtol(argv[i+2], NULL, 16) << (i * 8);
@@ -193,6 +188,7 @@ void parse_write(int argc, char *argv[]) {
   pmbus_send_by_obj(0, p, buffer);
   
   Serial.printf("Writing to %02x: %04x\n", cmdregister, buffer);
+  return;
 }
 
 
@@ -232,7 +228,7 @@ void parse_read(int argc, char *argv[]) {
   Serial.printf("Found PMBus command information for %s at 0x%2x takes %d bytes\n", p->name, p->reg, p->length);
   pmbus_request_by_name(0, p->name, (byte *) &buffer);
   Serial.printf("Device responded with: %llx\n", buffer);
-  
+  return;
 }
 
 void parse_set_fan(int argc, char *argv[]) {
@@ -274,8 +270,6 @@ void serial_read() {
   }
 }
 
-
-
 char *string_to_hex(char *string, int maxn) {
   static char buf[256];
   memset(&buf, 0 , sizeof(buf));
@@ -284,8 +278,6 @@ char *string_to_hex(char *string, int maxn) {
   }
   return(&buf[0]);
 }
-
-//0x0f 0x1a
 
 long hexstring_to_long(const char *h) {
   char *n = (char *) malloc(strlen(h) + 1);
@@ -331,7 +323,6 @@ void print_i2c_bus_info(uint16_t devices[8]) {
 }
 
 void scan_i2c_bus(TwoWire *wire) {
-//  wire = &Wire;
   byte error;
   uint8_t address; 
   uint16_t devices[8];
