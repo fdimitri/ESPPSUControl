@@ -10,6 +10,9 @@
 #include <stdlib.h>
 typedef unsigned char byte;
 #endif
+#define STATS_NSAMPLES 256
+
+#define RUNFLAG_MODE_MEASUREMENT 0x01
 
 #define PMBUS_READ  0x01
 #define PMBUS_WRITE 0x02
@@ -68,6 +71,20 @@ struct pmbDevice {
   TwoWire *wire;
   uint8_t address;
   uint16_t vout_mode;
+};
+
+struct statsItem {
+  float peak;
+  float min;
+  float samples[STATS_NSAMPLES];
+  uint8_t hptr, tptr;
+};
+
+struct statsRecorder {
+  statsItem outVolts, inVolts;
+  statsItem outWatts, inWatts;
+  statsItem outAmps, inAmps;
+  statsItem efficiency;
 };
 
 #endif

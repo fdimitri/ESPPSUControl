@@ -13,14 +13,17 @@
 #include "structs.h"
 #include "pmbus.h"
 #include "display.h"
+#include "measurements.h"
 
 #ifndef ARDUINO
 #include "linux_arduino_wrapper.h"
 #endif
 void scan_i2c_bus(TwoWire *wire);
 
+
 char serial_command_buffer[256];
 uint8_t serial_command_buffer_ptr = 0;
+uint32_t runFlags = 0x0;
 
 
 void parse_write(int argc, char *argv[]);
@@ -51,82 +54,6 @@ SerialCommand serial_commands[] = {
   { NULL, NULL, NULL }
 };
 
-#define STATS_NSAMPLES 256
-
-struct statsItem {
-  float peak;
-  float min;
-  float samples[STATS_NSAMPLES];
-  uint8_t hptr, tptr;
-};
-
-struct statsRecorder {
-  statsItem outVolts, inVolts;
-  statsItem outWatts, inWatts;
-  statsItem outAmps, inAmps;
-  statsItem efficiency;
-};
-
-
-void stats_update_item(statsItem *cItem, float f);
-void stats_collect(int pfd);
-float stats_get_average(statsItem *cItem);
-void stats_initialize();
-
-statsRecorder stats;
-
-uint32_t runFlags = 0x0;
-
-#define RUNFLAG_MODE_MEASUREMENT 0x01
-
-void stats_collect(int pfd) {
-  uint16_t buf, vomode;
-  struct statsItem *cItem;
-  float f;
-
-  pmbus_request_by_name(pfd, "VOUT_MODE", (byte *) &buf);
-  vomode = buf;
-
-  cItem = &stats.inAmps;
-  pmbus_request_by_name(pfd, "READ_IIN", (byte *) &buf);
-  f = pmbus_convert_linear11_to_float(buf);
-  stats_update_item(cItem, f);
-
-  cItem = &stats.inVolts;
-  pmbus_request_by_name(pfd, "READ_VIN", (byte *) &buf);
-  f = pmbus_convert_linear11_to_float(buf);
-  stats_update_item(cItem, f);
-
-  cItem = &stats.outVolts;
-  pmbus_request_by_name(pfd, "READ_VOUT", (byte *) &buf);
-  f = pmbus_convert_linear16_to_float(buf, vomode);
-  stats_update_item(cItem, f);
-
-  cItem = &stats.outAmps;
-  pmbus_request_by_name(pfd, "READ_IOUT", (byte *) &buf);
-  f = pmbus_convert_linear11_to_float(buf);
-  stats_update_item(cItem, f);
-
-  return;
-}
-
-void stats_update_item(statsItem *cItem, float f) {
-  if (cItem->peak < f) cItem->peak = f;
-  if (cItem->min > f) cItem->min = f;
-  cItem->samples[cItem->tptr++] = f;
-  return;  
-}
-
-float stats_get_average(statsItem *cItem) {
-  float t;
-  for (int i = 0; i < STATS_NSAMPLES; i++) t += cItem->samples[i];
-  return(t / STATS_NSAMPLES);
-}
-
-void stats_initialize() {
-  memset((void *) &stats, 0, sizeof(stats));
-
-}
 
 void setup() {
   delay(2500);
@@ -431,9 +358,7 @@ void scan_i2c_bus(TwoWire *wire) {
   }
   oled_printf("\nSCAN!");
   Serial.printf("Found %d devices on this bus\n", numDevices);
-  // for (uint8_t c = 0; c < 0x8; c++) {
-  //   printf("%016x\n", devices[c]);
-  // }
+
   print_i2c_bus_info(devices);
 }
 
