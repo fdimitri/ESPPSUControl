@@ -34,6 +34,7 @@ void parse_measurement_mode(int argc, char *argv[]);
 void parse_message(char *msg);
 void serial_read();
 void parse_attach_psu(int argc, char *argv[]);
+void parse_help(int argc, char *argv[]);
 
 char *string_to_hex(char *string, int maxn);
 char *hexstring_strip(const char *h, char *n);
@@ -42,12 +43,13 @@ long hexstring_to_long(const char *h);
 void pmbus_read_all();
 
 SerialCommand serial_commands[] = {
+  { "help", "?", parse_help },
   { "read", "r", parse_read },
   { "write", "w", parse_write },
   { "scan_i2c", "s", parse_scan_i2c },
   { "power_off", "poff", NULL },
   { "power_on", "pon", NULL },
-  { "set_fan", "sf", NULL },
+  { "set_fan", "sf", parse_set_fan },
   { "clear_faults", "clr", NULL },
   { "measurement_mode", "mm", parse_measurement_mode },
   { "attach_psu", "ap", parse_attach_psu },
@@ -123,7 +125,7 @@ void parse_message(char *omsg) {
       return;
     }
   }
-  Serial.printf("Command %s not found.\n", argv[0]);
+  Serial.printf("Command '%s' not found. Type 'help' for available commands.\n", argv[0]);
 
   free(msgstart);
   return;
@@ -398,4 +400,11 @@ void parse_attach_psu(int argc, char *argv[]) {
   }
   Serial.printf("attach_psu: Invalid or unrecognized i2c address - %s interpreted as 0x%x\n", argv[2], addr);
   return;
+}
+void parse_help(int argc, char *argv[]) {
+  Serial.printf("\nAvailable commands:\n");
+  for (unsigned int i = 0; serial_commands[i].command != NULL; i++) {
+    Serial.printf("  %-20s (%s)\n", serial_commands[i].command, serial_commands[i].mnemonic);
+  }
+  Serial.printf("\nType 'help' or '?' to see this message\n");
 }
