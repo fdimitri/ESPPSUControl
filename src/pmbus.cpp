@@ -250,12 +250,12 @@ unsigned char pmbus_crc8(unsigned char *d, unsigned int n) {
 
 float pmbus_convert_linear11_to_float(uint16_t value) {
   linear11_t *v = (linear11_t *) &value;
-  return((float) v->base * powf(2, v->mantissa));
+  return((float) v->mantissa * powf(2, v->exponent));
 }
 
 float pmbus_convert_linear16_to_float(int16_t value, int16_t vout_mode) {
   linear16_t *v = (linear16_t *) &vout_mode;
-  return((float) value * powf(2, v->mantissa));
+  return((float) value * powf(2, v->exponent));
 }
 
 float pmbus_convert_linear11_to_float_bitwise(uint16_t value) {
