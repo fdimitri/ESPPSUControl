@@ -60,16 +60,35 @@ void stats_update_item(statsItem *cItem, float f) {
   if (cItem->peak < f) cItem->peak = f;
   if (cItem->min > f) cItem->min = f;
   cItem->samples[cItem->tptr++] = f;
-  return;  
+  // Track number of samples collected (hptr used as sample count until buffer is full)
+  if (cItem->hptr < STATS_NSAMPLES) cItem->hptr++;
+  return;
 }
 
 float stats_get_average(statsItem *cItem) {
-  float t;
-  for (int i = 0; i < STATS_NSAMPLES; i++) t += cItem->samples[i];
-  return(t / STATS_NSAMPLES);
+  float t = 0.0;  // Initialize to zero
+  uint8_t count = (cItem->hptr < STATS_NSAMPLES) ? cItem->hptr : STATS_NSAMPLES;
+  if (count == 0) return 0.0;  // Avoid division by zero
+  for (int i = 0; i < count; i++) t += cItem->samples[i];
+  return(t / count);
+}
+
+float stats_get_min(statsItem *cItem) {
+  return cItem->min;
+}
+
+float stats_get_max(statsItem *cItem) {
+  return cItem->peak;
 }
 
 void stats_initialize() {
   memset((void *) &stats, 0, sizeof(stats));
-
+  // Initialize min values to maximum float to ensure first sample sets proper min
+  stats.outVolts.min = INFINITY;
+  stats.inVolts.min = INFINITY;
+  stats.outWatts.min = INFINITY;
+  stats.inWatts.min = INFINITY;
+  stats.outAmps.min = INFINITY;
+  stats.inAmps.min = INFINITY;
+  stats.efficiency.min = INFINITY;
 }

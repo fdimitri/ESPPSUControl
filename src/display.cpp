@@ -26,7 +26,7 @@ void oled_msg(const char *str, unsigned int length) {
 
 void oled_msgLn(char *str, unsigned int length) {
   oled_msg(str, length);
-  display.write("\n");
+  display.write('\n');
 }
 
 int oled_init(void) {

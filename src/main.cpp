@@ -34,6 +34,7 @@ void parse_measurement_mode(int argc, char *argv[]);
 void parse_message(char *msg);
 void serial_read();
 void parse_attach_psu(int argc, char *argv[]);
+void parse_help(int argc, char *argv[]);
 
 char *string_to_hex(char *string, int maxn);
 char *hexstring_strip(const char *h, char *n);
@@ -42,12 +43,13 @@ long hexstring_to_long(const char *h);
 void pmbus_read_all();
 
 SerialCommand serial_commands[] = {
+  { "help", "?", parse_help },
   { "read", "r", parse_read },
   { "write", "w", parse_write },
   { "scan_i2c", "s", parse_scan_i2c },
   { "power_off", "poff", NULL },
   { "power_on", "pon", NULL },
-  { "set_fan", "sf", NULL },
+  { "set_fan", "sf", parse_set_fan },
   { "clear_faults", "clr", NULL },
   { "measurement_mode", "mm", parse_measurement_mode },
   { "attach_psu", "ap", parse_attach_psu },
@@ -123,7 +125,7 @@ void parse_message(char *omsg) {
       return;
     }
   }
-  Serial.printf("Command %s not found.\n", argv[0]);
+  Serial.printf("Command '%s' not found. Type 'help' for available commands.\n", argv[0]);
 
   free(msgstart);
   return;
@@ -232,11 +234,36 @@ void parse_read(int argc, char *argv[]) {
 }
 
 void parse_set_fan(int argc, char *argv[]) {
-
+  if (argc < 2) {
+    Serial.printf("Usage: set_fan <speed_percent>\n");
+    return;
+  }
+  uint16_t speed = strtol(argv[1], NULL, 10);
+  if (speed > 100) {
+    Serial.printf("Fan speed must be 0-100%%\n");
+    return;
+  }
+  // Convert percentage to PMBus LINEAR11 format (0-0xFFFF range)
+  uint16_t fan_value = (speed * 0xFFFF) / 100;
+  pmbus_send_by_name(0, "FAN_COMMAND_1", fan_value);
+  Serial.printf("Set fan speed to %d%% (0x%04x)\n", speed, fan_value);
 }
 
 void parse_measurement_mode(int argc, char *argv[]) {
-
+  if (argc < 2) {
+    Serial.printf("Usage: measurement_mode <on|off>\n");
+    return;
+  }
+  if (!strcasecmp(argv[1], "on")) {
+    runFlags |= RUNFLAG_MODE_MEASUREMENT;
+    stats_initialize();
+    Serial.printf("Measurement mode enabled\n");
+  } else if (!strcasecmp(argv[1], "off")) {
+    runFlags &= ~RUNFLAG_MODE_MEASUREMENT;
+    Serial.printf("Measurement mode disabled\n");
+  } else {
+    Serial.printf("Invalid argument. Use 'on' or 'off'\n");
+  }
 }
 
 void draw_measurement_mode() {
@@ -261,8 +288,10 @@ void serial_read() {
         memset((void *) &serial_command_buffer, 0, sizeof(serial_command_buffer));
         break;
       case '\b':
-        serial_command_buffer_ptr--;
-        serial_command_buffer[serial_command_buffer_ptr] = 0;
+        if (serial_command_buffer_ptr > 0) {                    /* Check to see if we're at the beginning of the input buffer, otherwise do nothing */
+          serial_command_buffer_ptr--;
+          serial_command_buffer[serial_command_buffer_ptr] = 0;
+        }
         break;
       default:
         serial_command_buffer[serial_command_buffer_ptr++] = c;  
@@ -371,4 +400,11 @@ void parse_attach_psu(int argc, char *argv[]) {
   }
   Serial.printf("attach_psu: Invalid or unrecognized i2c address - %s interpreted as 0x%x\n", argv[2], addr);
   return;
+}
+void parse_help(int argc, char *argv[]) {
+  Serial.printf("\nAvailable commands:\n");
+  for (unsigned int i = 0; serial_commands[i].command != NULL; i++) {
+    Serial.printf("  %-20s (%s)\n", serial_commands[i].command, serial_commands[i].mnemonic);
+  }
+  Serial.printf("\nType 'help' or '?' to see this message\n");
 }

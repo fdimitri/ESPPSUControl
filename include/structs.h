@@ -58,13 +58,13 @@ struct SerialCommand {
 };
 
 struct linear11_t {
-  int16_t base : 11;
-  int16_t mantissa : 5;
+  int16_t mantissa : 11;  // bits 10-0: 11-bit mantissa
+  int16_t exponent : 5;   // bits 15-11: 5-bit exponent
 };
 
 struct linear16_t {
-  int16_t mantissa : 5;
-  int16_t ignored : 11;
+  int16_t exponent : 5;   // bits 4-0: 5-bit exponent from VOUT_MODE
+  int16_t ignored : 11;   // bits 15-5: ignored
 };
 
 struct pmbDevice {
